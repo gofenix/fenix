@@ -243,9 +243,9 @@ export class StringLiteral extends Expression {
  * 整型字面量
  */
 export class IntegerLiteral extends Expression {
-    value: string
+    value: number
 
-    constructor(value: string) {
+    constructor(value: number) {
         super()
         this.value = value
     }

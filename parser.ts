@@ -23,7 +23,7 @@
  * parameterList : expression (',' expression)* ;
  */
 
-import { Block, Expression, ExpressionStatement, FunctionCall, FunctionDecl, Prog, Statement, VariableDecl } from "./ast";
+import { Binary, Block, DecimalLiteral, Expression, ExpressionStatement, FunctionCall, FunctionDecl, IntegerLiteral, Prog, Statement, StringLiteral, Variable, VariableDecl } from "./ast";
 import { Scanner, TokenKind, Token } from "./scanner";
 
 
@@ -197,14 +197,75 @@ export class Parser {
      * 解析表达式语句
      */
     parseExpressionStatement(): ExpressionStatement | null {
+        let exp = this.parseExpression()
+        if (exp != null) {
+            let t = this.scanner.peek()
+            if (t.text == ';') {
+                this.scanner.next()
+                return new ExpressionStatement(exp)
+            } else {
+                console.log("Expecting a semicolon at the end of an expression statement, while we got a " + t.text);
+                return null
 
+            }
+        } else {
+            console.log("Error parsing ExpressionStatement");
+            return null
+        }
+        return null
     }
 
     /**
      * 解析表达式
      */
     parseExpression(): Expression | null {
+        return this.parseBinary(0)
+    }
 
+    private opPrec = new Map([
+        ['=', 2],
+        ['+=', 2],
+        ['-=', 2],
+        ['*=', 2],
+        ['-=', 2],
+        ['%=', 2],
+        ['&=', 2],
+        ['|=', 2],
+        ['^=', 2],
+        ['~=', 2],
+        ['<<=', 2],
+        ['>>=', 2],
+        ['>>>=', 2],
+        ['||', 4],
+        ['&&', 5],
+        ['|', 6],
+        ['^', 7],
+        ['&', 8],
+        ['==', 9],
+        ['===', 9],
+        ['!=', 9],
+        ['!==', 9],
+        ['>', 10],
+        ['>=', 10],
+        ['<', 10],
+        ['<=', 10],
+        ['<<', 11],
+        ['>>', 11],
+        ['>>>', 11],
+        ['+', 12],
+        ['-', 12],
+        ['*', 13],
+        ['/', 13],
+        ['%', 13],
+    ])
+
+    private getPrec(op: string): number {
+        let ret = this.opPrec.get(op)
+        if (typeof ret == 'undefined') {
+            return -1
+        } else {
+            return ret
+        }
     }
 
     /**
@@ -212,13 +273,82 @@ export class Parser {
      * 这是一个递归的算法，一开始，提供的参数是最低的优先级
      */
     parseBinary(prec: number): Expression | null {
+        console.log("parseBinary: " + prec);
+        let exp1 = this.parsePrimary()
+        if (exp1 != null) {
+            let t = this.scanner.peek()
+            let tprec = this.getPrec(t.text)
 
+            // 下面这个循环的意思是：只要右边出现的新运算符优先级更高，那么就把右边出现的作为右节点
+            /**
+             * 对于 2+3+5
+             */
+            while (t.kind == TokenKind.Operator && tprec > prec) {
+                this.scanner.next() // 跳过运算符
+                let exp2 = this.parseBinary(tprec)
+                if (exp2 != null) {
+                    let exp: Binary = new Binary(t.text, exp1, exp2)
+                    exp1 = exp
+                    t = this.scanner.peek()
+                    tprec = this.getPrec(t.text)
+                } else {
+                    console.log("Can not recognize a expression starting with: " + t.text);
+                    return null
+                }
+            }
+            return exp1
+        } else {
+            console.log("Can not recognize a expression starting with: " + this.scanner.peek().text);
+            return null
+        }
+        return null
     }
 
     /**
      * 解析基础表达式
      */
     parsePrimary(): Expression | null {
+        let t = this.scanner.peek()
+        console.log("parsePrimary: " + t.text);
+
+        // 以Identifier开头，可能是函数调用，也可能是一个变量，所以要再多向后看一个token
+        // 这相当于在局部使用了LL2算法
+        if (t.kind == TokenKind.Identifier) {
+            if (this.scanner.peek2().text == '(') {
+                return this.parseFunctionCall()
+            } else {
+                this.scanner.next()
+                return new Variable(t.text)
+            }
+
+        } else if (t.kind == TokenKind.IntegerLiteral) {
+            this.scanner.next()
+            return new IntegerLiteral(parseInt(t.text))
+
+        } else if (t.kind == TokenKind.DecimalLiteral) {
+            this.scanner.next()
+            return new DecimalLiteral(parseFloat(t.text))
+
+        } else if (t.kind == TokenKind.StringLiteral) {
+            this.scanner.next()
+            return new StringLiteral(t.text)
+
+        } else if (t.text == '(') {
+            this.scanner.next()
+            let exp = this.parseExpression()
+            let t1 = this.scanner.peek()
+            if (t1.text == ')') {
+                this.scanner.next()
+                return exp
+            } else {
+                console.log("Expecting a ')' at the end of primary expression, while we got a " + t.text);
+                return null
+            }
+
+        } else {
+            console.log("Can not recognize a primary expression starting with: " + t.text);
+            return null
+        }
 
     }
 
@@ -226,7 +356,43 @@ export class Parser {
      * 解析函数调用
      */
     parseFunctionCall(): FunctionCall | null {
+        let params: Expression[] = []
+        let t: Token = this.scanner.next()
+        if (t.kind == TokenKind.Identifier) {
+            let t1: Token = this.scanner.next()
 
+            if (t1.text == '(') {
+                // 循环读出所有参数
+                t1 = this.scanner.peek()
+                while (t1.text != ')') {
+                    let exp = this.parseExpression()
+                    if (exp != null) {
+                        params.push(exp)
+                    } else {
+                        console.log("Error parsing parameter in function call");
+                        return null
+
+                    }
+
+                    t1 = this.scanner.peek()
+                    if (t1.text != ')') {
+                        if (t1.text == ',') {
+                            t1 = this.scanner.next()
+                        } else {
+                            console.log("Expecting a comma at the end of a function call, while we got a " + t.text);
+                            return null
+
+                        }
+                    }
+                }
+
+                // 消化掉')'
+                this.scanner.next()
+
+                return new FunctionCall(t.text, params)
+            }
+        }
+        return null
     }
 
 
