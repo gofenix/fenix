@@ -1,0 +1,19 @@
+// 这个是单行注释
+function foo() {
+    println("hello");
+}
+
+// 这个是有参数
+function bar() {
+    println("bar");
+    // 调用foo
+    foo();
+}
+
+/**
+this is 
+多行
+注释
+*/
+bar();
+
