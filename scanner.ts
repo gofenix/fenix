@@ -23,7 +23,7 @@ export interface Token {
 // peek(): 预读下一个字符，但不移动指针
 // next() 读取下一个字符，移动指针
 // eof() 判断是否到了结尾
-class CharStream {
+export class CharStream {
     data: string
     pos: number = 0
     line: number = 1
