@@ -23,14 +23,38 @@
  * parameterList : expression (',' expression)* ;
  */
 
-import { Binary, Block, DecimalLiteral, Expression, ExpressionStatement, FunctionCall, FunctionDecl, IntegerLiteral, Prog, Statement, StringLiteral, Variable, VariableDecl } from "./ast";
-import { Scanner, TokenKind, Token } from "./scanner";
-
+import {
+    Binary,
+    Block,
+    DecimalLiteral,
+    Expression,
+    ExpressionStatement,
+    FunctionCall,
+    FunctionDecl,
+    IntegerLiteral,
+    Position,
+    Prog,
+    Statement,
+    StringLiteral,
+    Variable,
+    VariableDecl,
+} from './ast'
+import { CompileError } from './error'
+import { Scanner, TokenKind, Token } from './scanner'
 
 export class Parser {
     scanner: Scanner
+
     constructor(scanner: Scanner) {
         this.scanner = scanner
+    }
+
+    errors: CompileError[] = []
+    warnings: CompileError[] = []
+
+    addError(msg: string, pos: Position) {
+        this.errors.push(new CompileError(msg, pos, false))
+        console.log(`@${pos.toString()}: ${msg}`)
     }
 
     /**
@@ -50,7 +74,7 @@ export class Parser {
             if (stmt != null) {
                 stmts.push(stmt)
             } else {
-                console.log("Error parsing a Statement in Program.");
+                console.log('Error parsing a Statement in Program.')
                 return []
             }
             t = this.scanner.peek()
@@ -70,14 +94,19 @@ export class Parser {
             return this.parseFunctionDecl()
         } else if (t.text == 'let') {
             return this.parseVariableDecl()
-        } else if (t.kind == TokenKind.Identifier ||
+        } else if (
+            t.kind == TokenKind.Identifier ||
             t.kind == TokenKind.DecimalLiteral ||
             t.kind == TokenKind.IntegerLiteral ||
             t.kind == TokenKind.StringLiteral ||
-            t.text == '(') {
+            t.text == '('
+        ) {
             return this.parseExpressionStatement()
         } else {
-            console.log("Can not recognize a expression starting with: " + this.scanner.peek().text);
+            console.log(
+                'Can not recognize a expression starting with: ' +
+                    this.scanner.peek().text
+            )
             return null
         }
     }
@@ -105,7 +134,7 @@ export class Parser {
                     varType = t1.text
                     t1 = this.scanner.peek()
                 } else {
-                    console.log("Error parsing type annotation in VariableDecl");
+                    console.log('Error parsing type annotation in VariableDecl')
                     return null
                 }
             }
@@ -122,12 +151,17 @@ export class Parser {
                 this.scanner.next()
                 return new VariableDecl(varName, varType, init)
             } else {
-                console.log("Expecting ; at the end of variable declaration, while we meet " + t1.text)
+                console.log(
+                    'Expecting ; at the end of variable declaration, while we meet ' +
+                        t1.text
+                )
                 return null
-
             }
         } else {
-            console.log("Expecting variable name in VariableDecl, while we meet " + t.text);
+            console.log(
+                'Expecting variable name in VariableDecl, while we meet ' +
+                    t.text
+            )
             return null
         }
     }
@@ -145,26 +179,32 @@ export class Parser {
             let t1 = this.scanner.next()
             if (t1.text == '(') {
                 let t2 = this.scanner.next()
-                if (t2.text == ")") {
+                if (t2.text == ')') {
                     let functionBody = this.parseFunctionBody()
                     if (functionBody != null) {
                         //如果解析成功，从这里返回
                         return new FunctionDecl(t.text, functionBody)
                     } else {
-                        console.log("Error parsing FunctionBody in FunctionDecl");
+                        console.log(
+                            'Error parsing FunctionBody in FunctionDecl'
+                        )
                         return null
-
                     }
                 } else {
-                    console.log("Expecting '(' in FunctionDecl, while we got a " + t.text);
+                    console.log(
+                        "Expecting '(' in FunctionDecl, while we got a " +
+                            t.text
+                    )
                     return null
                 }
             } else {
-                console.log("Expecting '(' in FunctionDecl, while we got a " + t.text);
+                console.log(
+                    "Expecting '(' in FunctionDecl, while we got a " + t.text
+                )
                 return null
             }
         } else {
-            console.log("Expecting a function name, while we got a " + t.text);
+            console.log('Expecting a function name, while we got a ' + t.text)
             return null
         }
         return null
@@ -182,16 +222,18 @@ export class Parser {
             if (t.text == '}') {
                 return new Block(stmts)
             } else {
-                console.log("Expecting '}' in FunctionBody, while we got a " + t.text);
+                console.log(
+                    "Expecting '}' in FunctionBody, while we got a " + t.text
+                )
                 return null
-
             }
         } else {
-            console.log("Expecting '{' in FunctionBody, while we got a " + t.text);
+            console.log(
+                "Expecting '{' in FunctionBody, while we got a " + t.text
+            )
             return null
         }
     }
-
 
     /**
      * 解析表达式语句
@@ -204,12 +246,14 @@ export class Parser {
                 this.scanner.next()
                 return new ExpressionStatement(exp)
             } else {
-                console.log("Expecting a semicolon at the end of an expression statement, while we got a " + t.text);
+                console.log(
+                    'Expecting a semicolon at the end of an expression statement, while we got a ' +
+                        t.text
+                )
                 return null
-
             }
         } else {
-            console.log("Error parsing ExpressionStatement");
+            console.log('Error parsing ExpressionStatement')
             return null
         }
         return null
@@ -292,13 +336,19 @@ export class Parser {
                     t = this.scanner.peek()
                     tprec = this.getPrec(t.text)
                 } else {
-                    console.log("Can not recognize a expression starting with: " + t.text);
+                    console.log(
+                        'Can not recognize a expression starting with: ' +
+                            t.text
+                    )
                     return null
                 }
             }
             return exp1
         } else {
-            console.log("Can not recognize a expression starting with: " + this.scanner.peek().text);
+            console.log(
+                'Can not recognize a expression starting with: ' +
+                    this.scanner.peek().text
+            )
             return null
         }
         return null
@@ -309,7 +359,7 @@ export class Parser {
      */
     parsePrimary(): Expression | null {
         let t = this.scanner.peek()
-        console.log("parsePrimary: " + t.text);
+        console.log('parsePrimary: ' + t.text)
 
         // 以Identifier开头，可能是函数调用，也可能是一个变量，所以要再多向后看一个token
         // 这相当于在局部使用了LL2算法
@@ -320,19 +370,15 @@ export class Parser {
                 this.scanner.next()
                 return new Variable(t.text)
             }
-
         } else if (t.kind == TokenKind.IntegerLiteral) {
             this.scanner.next()
             return new IntegerLiteral(parseInt(t.text))
-
         } else if (t.kind == TokenKind.DecimalLiteral) {
             this.scanner.next()
             return new DecimalLiteral(parseFloat(t.text))
-
         } else if (t.kind == TokenKind.StringLiteral) {
             this.scanner.next()
             return new StringLiteral(t.text)
-
         } else if (t.text == '(') {
             this.scanner.next()
             let exp = this.parseExpression()
@@ -341,15 +387,19 @@ export class Parser {
                 this.scanner.next()
                 return exp
             } else {
-                console.log("Expecting a ')' at the end of primary expression, while we got a " + t.text);
+                console.log(
+                    "Expecting a ')' at the end of primary expression, while we got a " +
+                        t.text
+                )
                 return null
             }
-
         } else {
-            console.log("Can not recognize a primary expression starting with: " + t.text);
+            console.log(
+                'Can not recognize a primary expression starting with: ' +
+                    t.text
+            )
             return null
         }
-
     }
 
     /**
@@ -369,9 +419,8 @@ export class Parser {
                     if (exp != null) {
                         params.push(exp)
                     } else {
-                        console.log("Error parsing parameter in function call");
+                        console.log('Error parsing parameter in function call')
                         return null
-
                     }
 
                     t1 = this.scanner.peek()
@@ -379,9 +428,11 @@ export class Parser {
                         if (t1.text == ',') {
                             t1 = this.scanner.next()
                         } else {
-                            console.log("Expecting a comma at the end of a function call, while we got a " + t.text);
+                            console.log(
+                                'Expecting a comma at the end of a function call, while we got a ' +
+                                    t.text
+                            )
                             return null
-
                         }
                     }
                 }
@@ -394,6 +445,4 @@ export class Parser {
         }
         return null
     }
-
-
 }

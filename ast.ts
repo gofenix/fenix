@@ -1,4 +1,3 @@
-
 ////////////////////////////////////////////////////////////////////////////////
 //Parser
 /**
@@ -6,10 +5,28 @@
  */
 export abstract class AstNode {
     //打印对象信息，prefix是前面填充的字符串，通常用于缩进显示
-    public abstract dump(prefix: string): void;
+    public abstract dump(prefix: string): void
 
     //visitor模式中，用于接受vistor的访问。
-    public abstract accept(visitor: AstVisitor): any;
+    public abstract accept(visitor: AstVisitor): any
+}
+
+export class Position {
+    begin: number
+    end: number
+    line: number
+    col: number
+
+    constructor(begin: number, end: number, line: number, col: number) {
+        this.begin = begin
+        this.end = end
+        this.line = line
+        this.col = col
+    }
+
+    toString() {
+        return `(ln: ${this.line}, col: ${this.col}, pos: ${this.begin})`
+    }
 }
 
 /**
@@ -17,9 +34,9 @@ export abstract class AstNode {
  * 所有声明都会对应一个符号。
  */
 export abstract class Decl {
-    name: string;
+    name: string
     constructor(name: string) {
-        this.name = name;
+        this.name = name
     }
 }
 
@@ -27,17 +44,17 @@ export abstract class Decl {
  * 函数声明节点
  */
 export class FunctionDecl extends Decl {
-    body: Block; //函数体
+    body: Block //函数体
     constructor(name: string, body: Block) {
-        super(name);
-        this.body = body;
+        super(name)
+        this.body = body
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitFunctionDecl(this);
+        return visitor.visitFunctionDecl(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "FunctionDecl " + this.name);
-        this.body.dump(prefix + "    ");
+        console.log(prefix + 'FunctionDecl ' + this.name)
+        this.body.dump(prefix + '    ')
     }
 }
 
@@ -45,17 +62,17 @@ export class FunctionDecl extends Decl {
  * 函数体
  */
 export class Block extends AstNode {
-    stmts: Statement[];
+    stmts: Statement[]
     constructor(stmts: Statement[]) {
-        super();
-        this.stmts = stmts;
+        super()
+        this.stmts = stmts
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitBlock(this);
+        return visitor.visitBlock(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "Block");
-        this.stmts.forEach(x => x.dump(prefix + "    "));
+        console.log(prefix + 'Block')
+        this.stmts.forEach((x) => x.dump(prefix + '    '))
     }
 }
 
@@ -64,11 +81,11 @@ export class Block extends AstNode {
  */
 export class Prog extends Block {
     public accept(visitor: AstVisitor): any {
-        return visitor.visitProg(this);
+        return visitor.visitProg(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "Prog");
-        this.stmts.forEach(x => x.dump(prefix + "    "));
+        console.log(prefix + 'Prog')
+        this.stmts.forEach((x) => x.dump(prefix + '    '))
     }
 }
 
@@ -76,23 +93,24 @@ export class Prog extends Block {
  * 变量声明节点
  */
 export class VariableDecl extends Decl {
-    varType: string;       //变量类型
-    init: Expression | null; //变量初始化所使用的表达式
+    varType: string //变量类型
+    init: Expression | null //变量初始化所使用的表达式
     constructor(name: string, varType: string, init: Expression | null) {
-        super(name);
-        this.varType = varType;
-        this.init = init;
+        super(name)
+        this.varType = varType
+        this.init = init
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitVariableDecl(this);
+        return visitor.visitVariableDecl(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "VariableDecl " + this.name + ", type: " + this.varType);
+        console.log(
+            prefix + 'VariableDecl ' + this.name + ', type: ' + this.varType
+        )
         if (this.init == null) {
-            console.log(prefix + "no initialization.");
-        }
-        else {
-            this.init.dump(prefix + "    ");
+            console.log(prefix + 'no initialization.')
+        } else {
+            this.init.dump(prefix + '    ')
         }
     }
 }
@@ -101,36 +119,34 @@ export class VariableDecl extends Decl {
  * 语句
  * 其子类包括函数声明、表达式语句
  */
-export abstract class Statement extends AstNode {
-}
+export abstract class Statement extends AstNode {}
 
 /**
  * 语句
  * 其子类包括函数声明、表达式语句
  */
-export abstract class Expression extends AstNode {
-}
+export abstract class Expression extends AstNode {}
 
 /**
  * 二元表达式
  */
 export class Binary extends Expression {
-    op: string;      //运算符
-    exp1: Expression; //左边的表达式
-    exp2: Expression; //右边的表达式
+    op: string //运算符
+    exp1: Expression //左边的表达式
+    exp2: Expression //右边的表达式
     constructor(op: string, exp1: Expression, exp2: Expression) {
-        super();
-        this.op = op;
-        this.exp1 = exp1;
-        this.exp2 = exp2;
+        super()
+        this.op = op
+        this.exp1 = exp1
+        this.exp2 = exp2
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitBinary(this);
+        return visitor.visitBinary(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "Binary:" + this.op);
-        this.exp1.dump(prefix + "    ");
-        this.exp2.dump(prefix + "    ");
+        console.log(prefix + 'Binary:' + this.op)
+        this.exp1.dump(prefix + '    ')
+        this.exp2.dump(prefix + '    ')
     }
 }
 
@@ -139,17 +155,17 @@ export class Binary extends Expression {
  * 就是在表达式后面加个分号
  */
 export class ExpressionStatement extends Statement {
-    exp: Expression;
+    exp: Expression
     constructor(exp: Expression) {
-        super();
-        this.exp = exp;
+        super()
+        this.exp = exp
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitExpressionStatement(this);
+        return visitor.visitExpressionStatement(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "ExpressionStatement");
-        this.exp.dump(prefix + "    ");
+        console.log(prefix + 'ExpressionStatement')
+        this.exp.dump(prefix + '    ')
     }
 }
 
@@ -157,20 +173,25 @@ export class ExpressionStatement extends Statement {
  * 函数调用
  */
 export class FunctionCall extends AstNode {
-    name: string;
-    parameters: Expression[];
-    decl: FunctionDecl | null = null;  //指向函数的声明
+    name: string
+    parameters: Expression[]
+    decl: FunctionDecl | null = null //指向函数的声明
     constructor(name: string, parameters: Expression[]) {
-        super();
-        this.name = name;
-        this.parameters = parameters;
+        super()
+        this.name = name
+        this.parameters = parameters
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitFunctionCall(this);
+        return visitor.visitFunctionCall(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "FunctionCall " + this.name + (this.decl != null ? ", resolved" : ", not resolved"));
-        this.parameters.forEach(x => x.dump(prefix + "    "));
+        console.log(
+            prefix +
+                'FunctionCall ' +
+                this.name +
+                (this.decl != null ? ', resolved' : ', not resolved')
+        )
+        this.parameters.forEach((x) => x.dump(prefix + '    '))
     }
 }
 
@@ -178,17 +199,22 @@ export class FunctionCall extends AstNode {
  * 变量引用
  */
 export class Variable extends Expression {
-    name: string;
-    decl: VariableDecl | null = null; //指向变量声明
+    name: string
+    decl: VariableDecl | null = null //指向变量声明
     constructor(name: string) {
-        super();
-        this.name = name;
+        super()
+        this.name = name
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitVariable(this);
+        return visitor.visitVariable(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + "Variable: " + this.name + (this.decl != null ? ", resolved" : ", not resolved"));
+        console.log(
+            prefix +
+                'Variable: ' +
+                this.name +
+                (this.decl != null ? ', resolved' : ', not resolved')
+        )
     }
 }
 
@@ -196,16 +222,16 @@ export class Variable extends Expression {
  * 字符串字面量
  */
 export class StringLiteral extends Expression {
-    value: string;
+    value: string
     constructor(value: string) {
-        super();
-        this.value = value;
+        super()
+        this.value = value
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitStringLiteral(this);
+        return visitor.visitStringLiteral(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + this.value);
+        console.log(prefix + this.value)
     }
 }
 
@@ -213,16 +239,16 @@ export class StringLiteral extends Expression {
  * 整型字面量
  */
 export class IntegerLiteral extends Expression {
-    value: number;
+    value: number
     constructor(value: number) {
-        super();
-        this.value = value;
+        super()
+        this.value = value
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitIntegerLiteral(this);
+        return visitor.visitIntegerLiteral(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + this.value);
+        console.log(prefix + this.value)
     }
 }
 
@@ -230,16 +256,16 @@ export class IntegerLiteral extends Expression {
  * 实数字面量
  */
 export class DecimalLiteral extends Expression {
-    value: number;
+    value: number
     constructor(value: number) {
-        super();
-        this.value = value;
+        super()
+        this.value = value
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitDecimalLiteral(this);
+        return visitor.visitDecimalLiteral(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + this.value);
+        console.log(prefix + this.value)
     }
 }
 
@@ -247,15 +273,15 @@ export class DecimalLiteral extends Expression {
  * null字面量
  */
 export class NullLiteral extends Expression {
-    value: null = null;
+    value: null = null
     constructor() {
-        super();
+        super()
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitNullLiteral(this);
+        return visitor.visitNullLiteral(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + this.value);
+        console.log(prefix + this.value)
     }
 }
 
@@ -263,16 +289,16 @@ export class NullLiteral extends Expression {
  * Boolean字面量
  */
 export class BooleanLiteral extends Expression {
-    value: boolean;
+    value: boolean
     constructor(value: boolean) {
-        super();
-        this.value = value;
+        super()
+        this.value = value
     }
     public accept(visitor: AstVisitor): any {
-        return visitor.visitBooleanLiteral(this);
+        return visitor.visitBooleanLiteral(this)
     }
     public dump(prefix: string): void {
-        console.log(prefix + this.value);
+        console.log(prefix + this.value)
     }
 }
 
@@ -287,70 +313,69 @@ export abstract class AstVisitor {
     //对抽象类的访问。
     //相应的具体类，会调用visitor合适的具体方法。
     visit(node: AstNode): any {
-        return node.accept(this);
+        return node.accept(this)
     }
 
     visitProg(prog: Prog): any {
-        let retVal: any;
+        let retVal: any
         for (let x of prog.stmts) {
-            retVal = this.visit(x);
+            retVal = this.visit(x)
         }
-        return retVal;
+        return retVal
     }
 
     visitVariableDecl(variableDecl: VariableDecl): any {
         if (variableDecl.init != null) {
-            return this.visit(variableDecl.init);
+            return this.visit(variableDecl.init)
         }
     }
 
     visitFunctionDecl(functionDecl: FunctionDecl): any {
-        return this.visitBlock(functionDecl.body);
+        return this.visitBlock(functionDecl.body)
     }
 
     visitBlock(Block: Block): any {
-        let retVal: any;
+        let retVal: any
         for (let x of Block.stmts) {
-            retVal = this.visit(x);
+            retVal = this.visit(x)
         }
-        return retVal;
+        return retVal
     }
 
     visitExpressionStatement(stmt: ExpressionStatement): any {
-        return this.visit(stmt.exp);
+        return this.visit(stmt.exp)
     }
 
     visitBinary(exp: Binary): any {
-        this.visit(exp.exp1);
-        this.visit(exp.exp2);
+        this.visit(exp.exp1)
+        this.visit(exp.exp2)
     }
 
     visitIntegerLiteral(exp: IntegerLiteral): any {
-        return exp.value;
+        return exp.value
     }
 
     visitDecimalLiteral(exp: DecimalLiteral): any {
-        return exp.value;
+        return exp.value
     }
 
     visitStringLiteral(exp: StringLiteral): any {
-        return exp.value;
+        return exp.value
     }
 
     visitNullLiteral(exp: NullLiteral): any {
-        return exp.value;
+        return exp.value
     }
 
     visitBooleanLiteral(exp: BooleanLiteral): any {
-        return exp.value;
+        return exp.value
     }
 
     visitVariable(variable: Variable): any {
-        return undefined;
+        return undefined
     }
 
     visitFunctionCall(functionCall: FunctionCall): any {
-        return undefined;
+        return undefined
     }
 }
-

@@ -10,7 +10,7 @@ export enum TokenKind {
     BooleanLiteral,
     Seperator,
     Operator,
-    EOF
+    EOF,
 }
 
 // token的数据结构
@@ -53,7 +53,6 @@ export class CharStream {
     }
 }
 
-
 // 词法分析器
 // 词法分析器的接口像是一个流，词法解析是按需进行的
 // 支持下面两个操作：
@@ -63,17 +62,52 @@ export class Scanner {
     tokens: Array<Token> = new Array<Token>()
     stream: CharStream
 
-    private static KeyWords: Set<String> = new Set(
-        ["function", "class", "break", "delete", "return",
-            "case", "do", "if", "switch", "var",
-            "catch", "else", "in", "this", "void",
-            "continue", "false", "instanceof", "throw", "while",
-            "debugger", "finally", "new", "true", "with",
-            "default", "for", "null", "try", "typeof",
-            "default", "for", "null", "try", "typeof",
-            "implements", "let", "private", "public", "yield",
-            "interface", "package", "protected", "static"]
-    )
+    private static KeyWords: Set<String> = new Set([
+        'function',
+        'class',
+        'break',
+        'delete',
+        'return',
+        'case',
+        'do',
+        'if',
+        'switch',
+        'var',
+        'catch',
+        'else',
+        'in',
+        'this',
+        'void',
+        'continue',
+        'false',
+        'instanceof',
+        'throw',
+        'while',
+        'debugger',
+        'finally',
+        'new',
+        'true',
+        'with',
+        'default',
+        'for',
+        'null',
+        'try',
+        'typeof',
+        'default',
+        'for',
+        'null',
+        'try',
+        'typeof',
+        'implements',
+        'let',
+        'private',
+        'public',
+        'yield',
+        'interface',
+        'package',
+        'protected',
+        'static',
+    ])
 
     constructor(stream: CharStream) {
         this.stream = stream
@@ -90,7 +124,7 @@ export class Scanner {
 
     peek(): Token {
         let t: Token | undefined = this.tokens[0]
-        if (typeof t == "undefined") {
+        if (typeof t == 'undefined') {
             t = this.getAToken()
             this.tokens.push(t)
         }
@@ -111,27 +145,43 @@ export class Scanner {
         this.skipWhiteSpaces()
 
         if (this.stream.eof()) {
-            return { kind: TokenKind.EOF, text: "" }
+            return { kind: TokenKind.EOF, text: '' }
         } else {
             let ch: string = this.stream.peek()
             if (this.isLetter(ch) || ch == '_') {
                 return this.parseIdentifier()
             } else if (ch == '"') {
                 return this.parseStringLiteral()
-            } else if (ch == '(' || ch == ')' || ch == '{' ||
-                ch == '}' || ch == '[' || ch == ']' || ch == ';' || ch == ',' ||
-                ch == ':' || ch == '?' || ch == '@') {
+            } else if (
+                ch == '(' ||
+                ch == ')' ||
+                ch == '{' ||
+                ch == '}' ||
+                ch == '[' ||
+                ch == ']' ||
+                ch == ';' ||
+                ch == ',' ||
+                ch == ':' ||
+                ch == '?' ||
+                ch == '@'
+            ) {
                 this.stream.next()
                 return { kind: TokenKind.Seperator, text: ch }
             } else if (this.isDigit(ch)) {
                 this.stream.next()
                 let ch1 = this.stream.peek()
                 let literal: string = ''
-                if (ch == '0') { //暂不支持八进制、二进制、十六进制
+                if (ch == '0') {
+                    //暂不支持八进制、二进制、十六进制
                     if (!(ch >= '1' && ch <= '9')) {
                         literal = '0'
                     } else {
-                        console.log("0 can't be followed by other digit now, at line: " + this.stream.line + " col: " + this.stream.col);
+                        console.log(
+                            "0 can't be followed by other digit now, at line: " +
+                                this.stream.line +
+                                ' col: ' +
+                                this.stream.col
+                        )
                         // 暂时跳过去
                         this.stream.next()
                         return this.getAToken()
@@ -172,17 +222,19 @@ export class Scanner {
                         ch1 = this.stream.peek()
                     }
                     return { kind: TokenKind.DecimalLiteral, text: literal }
-                } else if (ch1 == '.') { // 省略号
+                } else if (ch1 == '.') {
+                    // 省略号
                     this.stream.next()
                     // 第三个.
                     ch1 = this.stream.peek()
                     if (ch1 == '.') {
                         return { kind: TokenKind.Seperator, text: '...' }
                     } else {
-                        console.log("Unrecognized pattern: .., missed a . ?");
+                        console.log('Unrecognized pattern: .., missed a . ?')
                         return this.getAToken()
                     }
-                } else { // . 号分隔符
+                } else {
+                    // . 号分隔符
                     return { kind: TokenKind.Seperator, text: '.' }
                 }
             } else if (ch == '/') {
@@ -201,7 +253,6 @@ export class Scanner {
                 } else {
                     return { kind: TokenKind.Operator, text: '/' }
                 }
-
             } else if (ch == '+') {
                 this.stream.next()
                 let ch1 = this.stream.peek()
@@ -302,14 +353,13 @@ export class Scanner {
                     } else {
                         return { kind: TokenKind.Operator, text: '==' }
                     }
-                } else if (ch1 == ">") {
+                } else if (ch1 == '>') {
                     // 箭头函数
                     this.stream.next()
                     return { kind: TokenKind.Operator, text: '=>' }
                 } else {
                     return { kind: TokenKind.Operator, text: '=' }
                 }
-
             } else if (ch == '!') {
                 this.stream.next()
                 let ch1 = this.stream.peek()
@@ -323,9 +373,8 @@ export class Scanner {
                         return { kind: TokenKind.Operator, text: '!=' }
                     }
                 } else {
-                    return { kind: TokenKind.Operator, text: "!" }
+                    return { kind: TokenKind.Operator, text: '!' }
                 }
-
             } else if (ch == '|') {
                 this.stream.next()
                 let ch1 = this.stream.peek()
@@ -338,7 +387,6 @@ export class Scanner {
                 } else {
                     return { kind: TokenKind.Operator, text: '|' }
                 }
-
             } else if (ch == '&') {
                 this.stream.next()
                 let ch1 = this.stream.peek()
@@ -351,7 +399,6 @@ export class Scanner {
                 } else {
                     return { kind: TokenKind.Operator, text: '&' }
                 }
-
             } else if (ch == '^') {
                 this.stream.next()
                 let ch1 = this.stream.peek()
@@ -366,12 +413,18 @@ export class Scanner {
                 return { kind: TokenKind.Operator, text: ch }
             } else {
                 // 暂时去掉不能识别的字符
-                console.log("Unrecognized pattern meeting ': " + ch + ", at " + this.stream.line + " col: " + this.stream.col)
+                console.log(
+                    "Unrecognized pattern meeting ': " +
+                        ch +
+                        ', at ' +
+                        this.stream.line +
+                        ' col: ' +
+                        this.stream.col
+                )
                 this.stream.next()
                 return this.getAToken()
             }
         }
-
     }
 
     // 跳过单行注释
@@ -404,8 +457,12 @@ export class Scanner {
         }
 
         // 如果没有匹配上，报错
-        console.log("Failed to find matching */ for multiple line comments at ': " + this.stream.line + " col: " + this.stream.col)
-
+        console.log(
+            "Failed to find matching */ for multiple line comments at ': " +
+                this.stream.line +
+                ' col: ' +
+                this.stream.col
+        )
     }
 
     // 跳过空白的字符
@@ -418,7 +475,7 @@ export class Scanner {
     // 字符串字面量
     // 目前只支持双引号，并且不支持转义
     private parseStringLiteral(): Token {
-        let token: Token = { kind: TokenKind.StringLiteral, text: "" }
+        let token: Token = { kind: TokenKind.StringLiteral, text: '' }
 
         //第一个字符不用判断，因为在调用的那里已经判断过了
         this.stream.next()
@@ -431,7 +488,12 @@ export class Scanner {
             // 消化掉字符换末尾的引号
             this.stream.next()
         } else {
-            console.log("Expecting an \" at line: " + this.stream.line + " col: " + this.stream.col)
+            console.log(
+                'Expecting an " at line: ' +
+                    this.stream.line +
+                    ' col: ' +
+                    this.stream.col
+            )
         }
 
         return token
@@ -439,14 +501,16 @@ export class Scanner {
 
     // 解析标识符，从标识符中还要挑选出关键字
     private parseIdentifier(): Token {
-        let token: Token = { kind: TokenKind.Identifier, text: "" }
+        let token: Token = { kind: TokenKind.Identifier, text: '' }
 
         // 同理，第一个字符不用判断，因为在调用者那里已经判断了
         token.text += this.stream.next()
 
         // 读入后序字符
-        while (!this.stream.eof() &&
-            this.isLetterDigitOrUnderscore(this.stream.peek())) {
+        while (
+            !this.stream.eof() &&
+            this.isLetterDigitOrUnderscore(this.stream.peek())
+        ) {
             token.text += this.stream.next()
         }
 
@@ -464,10 +528,12 @@ export class Scanner {
     }
 
     private isLetterDigitOrUnderscore(ch: string): boolean {
-        return (ch >= 'A' && ch <= 'Z' ||
-            ch >= 'a' && ch <= 'z' ||
-            ch >= '0' && ch <= '9' ||
-            ch == '_');
+        return (
+            (ch >= 'A' && ch <= 'Z') ||
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch == '_'
+        )
     }
 
     private isLetter(ch: string): boolean {
@@ -475,10 +541,10 @@ export class Scanner {
     }
 
     private isDigit(ch: string): boolean {
-        return (ch >= '0' && ch <= '9')
+        return ch >= '0' && ch <= '9'
     }
 
     private isWhiteSpace(ch: string): boolean {
-        return (ch == ' ' || ch == '\n' || ch == '\t')
+        return ch == ' ' || ch == '\n' || ch == '\t'
     }
 }
