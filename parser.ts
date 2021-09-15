@@ -273,7 +273,7 @@ export class Parser {
      * 这是一个递归的算法，一开始，提供的参数是最低的优先级
      */
     parseBinary(prec: number): Expression | null {
-        console.log("parseBinary: " + prec);
+        // console.log("parseBinary: " + prec);
         let exp1 = this.parsePrimary()
         if (exp1 != null) {
             let t = this.scanner.peek()

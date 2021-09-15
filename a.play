@@ -17,3 +17,8 @@ this is
 */
 bar();
 
+let a = 1;
+let b = 2;
+let c = "hello world";
+println(a+b);
+println(c);

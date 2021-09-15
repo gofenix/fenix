@@ -191,7 +191,7 @@ function compileAndRun(program: string) {
     let symTable = new SymTable()
     new Enter(symTable).visit(prog) // 建立符号表
     new RefResolver(symTable).visit(prog) // 引用消解
-    console.log("\n语法分析之后的AST，注意自定义函数的调用已经被消解：")
+    console.log("\n语义分析之后的AST，注意自定义函数的调用已经被消解：")
     prog.dump("")
 
     // 运行程序
