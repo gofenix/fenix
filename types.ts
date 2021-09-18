@@ -130,13 +130,18 @@ export class FunctionType extends Type {
         throw new Error('Method not implemented.')
     }
     accept(visitor: TypeVisitor) {
-        throw new Error('Method not implemented.')
+        return visitor.visitFunctionType(this)
     }
     hasVoid(): boolean {
-        throw new Error('Method not implemented.')
+        return this.returnType.hasVoid()
     }
     toString(): string {
-        throw new Error('Method not implemented.')
+        let paramTypeNames: string = '['
+        for (let ut of this.paramypes) {
+            paramTypeNames += ut.name + ', '
+        }
+        paramTypeNames += ']'
+        return `FunctionType {name: ${this.name}, return Type: ${this.returnType.name}, paramTypes: ${this.paramypes}}`
     }
 }
 
