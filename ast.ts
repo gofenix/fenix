@@ -1,5 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //Parser
+
 /**
  * AST基类
  */
@@ -30,6 +31,28 @@ export abstract class Decl extends AstNode {
     constructor(beginPos: Position, endPos: Position, name: string, isErrorNode: boolean) {
         super(beginPos, endPos, isErrorNode)
         this.name = name
+    }
+}
+
+/**
+ * 函数声明节点
+ */
+export class FunctionDecl extends Decl {
+    body: Block //函数体
+    callSignature: CallSignature
+    scope: Scope | null = null
+    constructor(name: string, body: Block) {
+        super(name)
+        this.body = body
+    }
+
+    public accept(visitor: AstVisitor): any {
+        return visitor.visitFunctionDecl(this)
+    }
+
+    public dump(prefix: string): void {
+        console.log(prefix + 'FunctionDecl ' + this.name)
+        this.body.dump(prefix + '    ')
     }
 }
 
@@ -72,26 +95,6 @@ export class ParameterList extends AstNode {
 
 export class CallSignature extends AstNode {
     paramList: ParamLi
-}
-
-/**
- * 函数声明节点
- */
-export class FunctionDecl extends Decl {
-    body: Block //函数体
-    constructor(name: string, body: Block) {
-        super(name)
-        this.body = body
-    }
-
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitFunctionDecl(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'FunctionDecl ' + this.name)
-        this.body.dump(prefix + '    ')
-    }
 }
 
 /**
@@ -346,6 +349,19 @@ export class BooleanLiteral extends Expression {
     }
 }
 
+export class VariableStatement extends Statement {
+    variableDecl: VariableDecl
+
+    constructor(beginPos: Position, endPos: Position, variableDecl: VariableDecl, isErrorNode: boolean = false) {
+        super(beginPos, endPos, isErrorNode)
+        this.variableDecl = variableDecl
+    }
+
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitVariableStatement(this, additional)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //Visitor
 
@@ -356,17 +372,15 @@ export class BooleanLiteral extends Expression {
 export abstract class AstVisitor {
     //对抽象类的访问。
     //相应的具体类，会调用visitor合适的具体方法。
-    visit(node: AstNode): any {
-        return node.accept(this)
+    visit(node: AstNode, additional: any = undefined): any {
+        return node.accept(this, additional)
     }
 
-    visitProg(prog: Prog): any {
-        let retVal: any
-        for (let x of prog.stmts) {
-            retVal = this.visit(x)
-        }
-        return retVal
+    visitProg(prog: Prog, additional: any = undefined): any {
+        return this.visitBlock(prog, additional)
     }
+
+    visitVariableStatement(variableStmt: VariableStatement, additional: any = undefined) {}
 
     visitVariableDecl(variableDecl: VariableDecl): any {
         if (variableDecl.init != null) {
@@ -378,10 +392,10 @@ export abstract class AstVisitor {
         return this.visitBlock(functionDecl.body)
     }
 
-    visitBlock(Block: Block): any {
+    visitBlock(block: Block, additional: any = undefined): any {
         let retVal: any
-        for (let x of Block.stmts) {
-            retVal = this.visit(x)
+        for (let x of block.stmts) {
+            retVal = this.visit(x, additional)
         }
         return retVal
     }
@@ -427,6 +441,9 @@ export abstract class AstVisitor {
 export class AstDumper extends AstVisitor {
     visitProg(prog: Prog, prefix: any): any {
         console.log(prefix + 'Prog' + (prog.isErrorNode ? '**E**' : ''))
+        for (let x of prog.stmts) {
+            this.visit(x, prefix + '\t')
+        }
     }
 
     visitVariableStatement(variableStmt: VariableStatement, prefix: any) {}

@@ -45,6 +45,7 @@ export abstract class Type {
 
 export class SimpleType extends Type {
     upperTypes: Type[]
+
     constructor(name: string, upperTypes: SimpleType[] = []) {
         super(name)
         this.upperTypes = upperTypes
@@ -85,9 +86,11 @@ export class SimpleType extends Type {
             return false
         }
     }
+
     accept(visitor: TypeVisitor) {
         visitor.visitSimpleType(this)
     }
+
     hasVoid(): boolean {
         if (this == SysTypes.Void) {
             return true
@@ -100,6 +103,7 @@ export class SimpleType extends Type {
             return false
         }
     }
+
     toString(): string {
         let upperTypeName: string = '['
         for (let ut of this.upperTypes) {
@@ -112,13 +116,13 @@ export class SimpleType extends Type {
 
 export class FunctionType extends Type {
     returnType: Type
-    paramypes: Type[]
+    paramTypes: Type[]
     static index: number = 0
 
     constructor(returnType: Type = SysTypes.Void, paramTypes: Type[] = [], name: string | undefined = undefined) {
         super('@function')
         this.returnType = returnType
-        this.paramypes = paramTypes
+        this.paramTypes = paramTypes
         if (typeof name == 'string') {
             this.name = name
         } else {
@@ -127,21 +131,37 @@ export class FunctionType extends Type {
     }
 
     LE(type2: Type): boolean {
-        throw new Error('Method not implemented.')
+        if (type2 == SysTypes.Any) {
+            return true
+        } else if (this == type2) {
+            return true
+        } else if (Type.isUnionType(type2)) {
+            let t = type2 as UnionType
+            if (t.types.indexOf(this) != -1) {
+                return true
+            } else {
+                return false
+            }
+        } else {
+            return false
+        }
     }
+
     accept(visitor: TypeVisitor) {
         return visitor.visitFunctionType(this)
     }
+
     hasVoid(): boolean {
         return this.returnType.hasVoid()
     }
+
     toString(): string {
         let paramTypeNames: string = '['
-        for (let ut of this.paramypes) {
+        for (let ut of this.paramTypes) {
             paramTypeNames += ut.name + ', '
         }
         paramTypeNames += ']'
-        return `FunctionType {name: ${this.name}, return Type: ${this.returnType.name}, paramTypes: ${this.paramypes}}`
+        return `FunctionType {name: ${this.name}, return Type: ${this.returnType.name}, paramTypes: ${this.paramTypes}}`
     }
 }
 
@@ -161,16 +181,47 @@ export class UnionType extends Type {
     }
 
     LE(type2: Type): boolean {
-        throw new Error('Method not implemented.')
+        if (type2 == SysTypes.Any) {
+            return true
+        } else if (Type.isUnionType(type2)) {
+            for (let t1 of this.types) {
+                let found = false
+                for (let t2 of (type2 as UnionType).types) {
+                    if (t1.LE(t2)) {
+                        found = true
+                        break
+                    }
+                }
+                if (!found) {
+                    return false
+                }
+            }
+            return true
+        } else {
+            return false
+        }
     }
-    accept(visitor: TypeVisitor) {
-        throw new Error('Method not implemented.')
+
+    accept(visitor: TypeVisitor): any {
+        visitor.visitUnionType(this)
     }
+
     hasVoid(): boolean {
-        throw new Error('Method not implemented.')
+        for (let t of this.types) {
+            if (t.hasVoid()) {
+                return true
+            }
+        }
+        return false
     }
+
     toString(): string {
-        throw new Error('Method not implemented.')
+        let typeNames: string = '['
+        for (let ut of this.types) {
+            typeNames += ut.name + ', '
+        }
+        typeNames += ']'
+        return `UnionType { name: ${this.name}, typesL ${typeNames} }`
     }
 }
 
@@ -211,6 +262,8 @@ export abstract class TypeVisitor {
     }
 
     abstract visitSimpleType(t: SimpleType): any
+
     abstract visitFunctionType(t: FunctionType): any
+
     abstract visitUnionType(t: UnionType): any
 }

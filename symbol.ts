@@ -37,7 +37,7 @@ export class FunctionSymbol extends Symbol {
     }
 
     getNumParams(): number {
-        return (this.theType as FunctionType).paramypes.length
+        return (this.theType as FunctionType).paramTypes.length
     }
 }
 
