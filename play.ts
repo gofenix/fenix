@@ -42,9 +42,7 @@ class Intepertor extends AstVisitor {
             if (functionCall.parameters.length > 0) {
                 let retVal = this.visit(functionCall.parameters[0])
                 if (typeof (retVal as LeftValue).variable == 'object') {
-                    retVal = this.getVariableValue(
-                        (retVal as LeftValue).variable.name
-                    )
+                    retVal = this.getVariableValue((retVal as LeftValue).variable.name)
                 }
                 console.log(retVal)
             } else {
@@ -183,15 +181,18 @@ function compileAndRun(program: string) {
 
     // 词法分析
     console.log('\n词法分析结果')
-    let tokenizer = new Scanner(new CharStream(program))
-    while (tokenizer.peek().kind != TokenKind.EOF) {
-        console.log(tokenizer.next())
+    let scanner = new Scanner(new CharStream(program))
+    while (scanner.peek().kind != TokenKind.EOF) {
+        console.log(scanner.next())
     }
-    tokenizer = new Scanner(new CharStream(program)) // 重置，回到开头
+    scanner = new Scanner(new CharStream(program)) // 重置，回到开头
 
     // 语法分析
-    let prog = new Parser(tokenizer).parseProg()
+    let parser = new Parser(scanner)
+    let prog: Prog = parser.parseProg()
     console.log('\n语法分析后的AST：')
+    let astDumper = new AstDummper()
+
     prog.dump('')
 
     // 语义分析

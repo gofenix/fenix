@@ -137,10 +137,7 @@ export class RefResolver extends AstVisitor {
         } else {
             if (functionCall.name != 'println') {
                 //系统内置函数不用报错
-                console.log(
-                    'Error: cannot find declaration of function ' +
-                        functionCall.name
-                )
+                console.log('Error: cannot find declaration of function ' + functionCall.name)
             }
         }
     }
@@ -151,9 +148,7 @@ export class RefResolver extends AstVisitor {
         if (symbol != null && symbol.kind == SymKind.Variable) {
             variable.decl = symbol.decl as VariableDecl
         } else {
-            console.log(
-                'Error: cannot find declaration of variable ' + variable.name
-            )
+            console.log('Error: cannot find declaration of variable ' + variable.name)
         }
     }
 }

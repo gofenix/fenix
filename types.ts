@@ -16,13 +16,31 @@ export abstract class Type {
 
     abstract toString(): string
 
-    static getUpperBound(type1: Type, type2: Type): Type {}
+    static getUpperBound(type1: Type, type2: Type): Type {
+        if (type1 == SysTypes.Any || type2 == SysTypes.Any) {
+            return SysTypes.Any
+        } else {
+            if (type1.LE(type2)) {
+                return type2
+            } else if (type2.LE(type1)) {
+                return type1
+            } else {
+                return new UnionType([type1, type2])
+            }
+        }
+    }
 
-    static isSimpleType(t: Type) {}
+    static isSimpleType(t: Type): boolean {
+        return typeof (t as SimpleType).upperTypes == 'object'
+    }
 
-    static isUnionType(t: Type) {}
+    static isUnionType(t: Type): boolean {
+        return typeof (t as UnionType).types == 'object'
+    }
 
-    static isFunctionType(t: Type) {}
+    static isFunctionType(t: Type): boolean {
+        return typeof (t as FunctionType).returnType == 'object'
+    }
 }
 
 export class SimpleType extends Type {
@@ -33,14 +51,62 @@ export class SimpleType extends Type {
     }
 
     LE(type2: Type): boolean {
-        throw new Error('Method not implemented.')
+        if (type2 == SysTypes.Any) {
+            return true
+        } else if (this == SysTypes.Any) {
+            return false
+        } else if (this == type2) {
+            return true
+        } else if (Type.isSimpleType(type2)) {
+            let t = type2 as SimpleType
+            if (this.upperTypes.indexOf(t) != -1) {
+                return true
+            } else {
+                for (let upperType of this.upperTypes) {
+                    if (upperType.LE(type2)) {
+                        return true
+                    }
+                }
+                return false
+            }
+        } else if (Type.isUnionType(type2)) {
+            let t = type2 as UnionType
+            if (t.types.indexOf(this) != -1) {
+                return true
+            } else {
+                for (let t2 of t.types) {
+                    if (this.LE(t2)) {
+                        return true
+                    }
+                }
+                return false
+            }
+        } else {
+            return false
+        }
     }
     accept(visitor: TypeVisitor) {
-        throw new Error('Method not implemented.')
+        visitor.visitSimpleType(this)
     }
-    hasVoid(): boolean {}
+    hasVoid(): boolean {
+        if (this == SysTypes.Void) {
+            return true
+        } else {
+            for (let t of this.upperTypes) {
+                if (t.hasVoid()) {
+                    return true
+                }
+            }
+            return false
+        }
+    }
     toString(): string {
-        throw new Error('Method not implemented.')
+        let upperTypeName: string = '['
+        for (let ut of this.upperTypes) {
+            upperTypeName += ut.name + ', '
+        }
+        upperTypeName += ']'
+        return `SimpleType { name: ${this.name}}, upperType: ${upperTypeName} }`
     }
 }
 
@@ -49,11 +115,7 @@ export class FunctionType extends Type {
     paramypes: Type[]
     static index: number = 0
 
-    constructor(
-        returnType: Type = SysTypes.Void,
-        paramTypes: Type[] = [],
-        name: string | undefined = undefined
-    ) {
+    constructor(returnType: Type = SysTypes.Void, paramTypes: Type[] = [], name: string | undefined = undefined) {
         super('@function')
         this.returnType = returnType
         this.paramypes = paramTypes
