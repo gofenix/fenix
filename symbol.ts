@@ -61,6 +61,50 @@ export enum SymKind {
     Prog,
 }
 
+export let FUN_println = new FunctionSymbol(
+    'println',
+    new FunctionType(SysTypes.Void, [SysTypes.String]),
+    [new VarSymbol('a', SysTypes.String)]
+)
+
+export let FUN_tick = new FunctionSymbol(
+    'tick',
+    new FunctionType(SysTypes.Integer, []),
+    []
+)
+
+export let FUN_integer_to_string = new FunctionSymbol(
+    'integer_to_string',
+    new FunctionType(SysTypes.String, [SysTypes.Integer]),
+    [new VarSymbol('a', SysTypes.Integer)]
+)
+
+export let built_ins: Map<string, FunctionSymbol> = new Map([
+    ['println', FUN_println],
+    ['tick', FUN_tick],
+    ['integer_to_string', FUN_integer_to_string],
+])
+
+let FUN_string_create_by_str = new FunctionSymbol(
+    'string_create_by_str',
+    new FunctionType(SysTypes.String, [SysTypes.String]),
+    [new VarSymbol('a', SysTypes.String)]
+)
+
+let FUN_string_concat = new FunctionSymbol(
+    'string_concat',
+    new FunctionType(SysTypes.String, [SysTypes.String, SysTypes.String]),
+    [
+        new VarSymbol('str1', SysTypes.String),
+        new VarSymbol('str2', SysTypes.String),
+    ]
+)
+
+export let intrinsics: Map<string, FunctionSymbol> = new Map([
+    ['string_create_by_str', FUN_string_create_by_str],
+    ['string_concat', FUN_string_concat],
+])
+
 export abstract class SymbolVisitor {
     abstract visitVarSymbol(sym: VarSymbol, additional: any): any
     abstract visitFunctionSymbol(sym: FunctionSymbol, additional: any): any
@@ -76,7 +120,15 @@ export class SymbolDumper extends SymbolVisitor {
     }
 
     visitFunctionSymbol(sym: FunctionSymbol, additional: any): any {
-        console.log(additional + sym.name + '{' + SymKind[sym.kind] + ', local var count: ' + sym.vars.length + '}')
+        console.log(
+            additional +
+                sym.name +
+                '{' +
+                SymKind[sym.kind] +
+                ', local var count: ' +
+                sym.vars.length +
+                '}'
+        )
         if (sym.byteCode != null) {
             let str: string = ''
             for (let code of sym.byteCode) {

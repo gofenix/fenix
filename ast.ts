@@ -1,17 +1,22 @@
 ////////////////////////////////////////////////////////////////////////////////
 //Parser
 
+import { Scope } from './scope'
+import { FunctionSymbol, VarSymbol, built_ins } from './symbol'
+import { SysTypes, Type } from './types'
+import { Op, Position } from './scanner'
+
 /**
  * AST基类
  */
 export abstract class AstNode {
     beginPos: Position
-    endPod: Position
+    endPos: Position
     isErrorNode: boolean
 
     constructor(beginPos: Position, endPos: Position, isErrorNode: boolean) {
         this.beginPos = beginPos
-        this.endPod = endPos
+        this.endPos = endPos
         this.isErrorNode = isErrorNode
     }
 
@@ -25,14 +30,26 @@ export abstract class AstNode {
  */
 export abstract class Statement extends AstNode {}
 
+/**
+ * 声明
+ * 所有声明都会对应一个符号
+ */
 export abstract class Decl extends AstNode {
     name: string
 
-    constructor(beginPos: Position, endPos: Position, name: string, isErrorNode: boolean) {
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        name: string,
+        isErrorNode: boolean
+    ) {
         super(beginPos, endPos, isErrorNode)
         this.name = name
     }
 }
+
+/////////////////////////////////////////////////////////////////////////////////
+// 语句
 
 /**
  * 函数声明节点
@@ -41,60 +58,66 @@ export class FunctionDecl extends Decl {
     body: Block //函数体
     callSignature: CallSignature
     scope: Scope | null = null
-    constructor(name: string, body: Block) {
-        super(name)
+    sym: FunctionSymbol | null = null
+
+    constructor(
+        beginPos: Position,
+        name: string,
+        callSignature: CallSignature,
+        body: Block,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, body.endPos, name, isErrorNode)
+        this.callSignature = callSignature
         this.body = body
     }
 
     public accept(visitor: AstVisitor): any {
         return visitor.visitFunctionDecl(this)
     }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'FunctionDecl ' + this.name)
-        this.body.dump(prefix + '    ')
-    }
 }
 
 /**
- * 语句
- * 其子类包括函数声明、表达式语句
+ * 调用签名
+ * 可以用在函数声明等多个地方
  */
-export abstract class Expression extends AstNode {}
+export class CallSignature extends AstNode {
+    paramList: ParameterList | null
+    theType: Type
 
-export class Position {
-    begin: number
-    end: number
-    line: number
-    col: number
-
-    constructor(begin: number, end: number, line: number, col: number) {
-        this.begin = begin
-        this.end = end
-        this.line = line
-        this.col = col
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        paramList: ParameterList | null,
+        theType: Type,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
+        this.paramList = paramList
+        this.theType = theType
     }
 
-    toString() {
-        return `(ln: ${this.line}, col: ${this.col}, pos: ${this.begin})`
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitCallSignature(this, additional)
     }
 }
 
 export class ParameterList extends AstNode {
     params: VariableDecl[]
 
-    constructor(beginPos: Position, endPos: Position, isErrorNode: boolean, params: VariableDecl[]) {
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        params: VariableDecl[],
+        isErrorNode: boolean = false
+    ) {
         super(beginPos, endPos, isErrorNode)
         this.params = params
     }
 
     accept(visitor: AstVisitor, additional: any): any {
-        return
+        return visitor.visitParameterList(this, additional)
     }
-}
-
-export class CallSignature extends AstNode {
-    paramList: ParamLi
 }
 
 /**
@@ -102,35 +125,59 @@ export class CallSignature extends AstNode {
  */
 export class Block extends AstNode {
     stmts: Statement[]
+    scope: Scope | null = null
 
-    constructor(stmts: Statement[]) {
-        super()
+    constructor(
+        beginPos: Position,
+        endPosition: Position,
+        stmts: Statement[],
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPosition, isErrorNode)
         this.stmts = stmts
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitBlock(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'Block')
-        this.stmts.forEach((x) => x.dump(prefix + '    '))
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitBlock(this, additional)
     }
 }
 
 /**
+ * 程序
  * 程序节点，也是AST的根节点
+ * 程序可以看做是一个隐性的函数，运行程序时也是可以带参数的
  */
 export class Prog extends Block {
-    sym: FunctionSym
+    sym: FunctionSymbol | null = null
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitProg(this)
+    constructor(beginPos: Position, endPos: Position, stmts: Statement[]) {
+        super(beginPos, endPos, stmts, false)
+        this.stmts = stmts
     }
 
-    public dump(prefix: string): void {
-        console.log(prefix + 'Prog')
-        this.stmts.forEach((x) => x.dump(prefix + '    '))
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitProg(this, additional)
+    }
+}
+
+/**
+ * 变量声明语句
+ */
+export class VariableStatement extends Statement {
+    variableDecl: VariableDecl
+
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        variableDecl: VariableDecl,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
+        this.variableDecl = variableDecl
+    }
+
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitVariableStatement(this, additional)
     }
 }
 
@@ -138,95 +185,220 @@ export class Prog extends Block {
  * 变量声明节点
  */
 export class VariableDecl extends Decl {
-    varType: string //变量类型
+    theType: Type //变量类型
     init: Expression | null //变量初始化所使用的表达式
-    constructor(name: string, varType: string, init: Expression | null) {
-        super(name)
-        this.varType = varType
+    sym: VarSymbol | null = null
+    inferredType: Type | null = null // 推测出的类型
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        name: string,
+        theType: Type,
+        init: Expression | null,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, name, isErrorNode)
+        this.theType = theType
         this.init = init
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitVariableDecl(this)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitVariableDecl(this, additional)
+    }
+}
+
+/**
+ * 表达式语句
+ * 就是表达式后面加一个分号
+ */
+export class ExpressionStatement extends Statement {
+    exp: Expression
+    constructor(
+        endPos: Position,
+        exp: Expression,
+        isErrorNode: boolean = false
+    ) {
+        super(exp.beginPos, endPos, isErrorNode)
+        this.exp = exp
     }
 
-    public dump(prefix: string): void {
-        console.log(prefix + 'VariableDecl ' + this.name + ', type: ' + this.varType)
-        if (this.init == null) {
-            console.log(prefix + 'no initialization.')
-        } else {
-            this.init.dump(prefix + '    ')
-        }
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitExpressionStatement(this, additional)
     }
+}
+
+/**
+ * return语句
+ */
+export class ReturnStatement extends Statement {
+    exp: Expression | null = null
+
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        exp: Expression | null,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
+        this.exp = exp
+    }
+
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitReturnStatement(this, additional)
+    }
+}
+
+/**
+ * if语句
+ */
+export class IfStatement extends Statement {
+    condition: Expression
+    stmt: Statement
+    elseStmt: Statement | null = null
+
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        condition: Expression,
+        stmt: Statement,
+        elseStmt: Statement | null,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
+        this.condition = condition
+        this.stmt = stmt
+        this.elseStmt = elseStmt
+    }
+
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitIfStatement(this, additional)
+    }
+}
+
+/**
+ * for语句
+ */
+export class ForStatement extends Statement {
+    init: Expression | VariableDecl | null = null
+    condition: Expression | null = null
+    increment: Expression | null = null
+    stmt: Statement
+    scope: Scope | null = null
+
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        init: Expression | VariableDecl | null,
+        termination: Expression | null,
+        increment: Expression | null,
+        stmt: Statement,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
+
+        this.init = init
+        this.condition = termination
+        this.increment = increment
+        this.stmt = stmt
+    }
+
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitForStatement(this, additional)
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 表达式
+
+/**
+ * 表达式
+ */
+export abstract class Expression extends AstNode {
+    theType: Type | null = null
+    // 当前位置需要一个左值，赋值符号，点符号的左边，需要左值
+    shouldBeLeftValue: boolean = false
+
+    // 是否是一个左值
+    isLeftValue: boolean = false
+
+    // 本表达式的常量值，在常量折叠、流程分析的时候用到
+    constValue: any = undefined
+
+    // 推断出来的类型
+    // 这个类型一般是theType的子类型，比如，theType是any，但是inferredType是number
+    inferredType: Type | null = null
 }
 
 /**
  * 二元表达式
  */
 export class Binary extends Expression {
-    op: string //运算符
+    op: Op //运算符
     exp1: Expression //左边的表达式
     exp2: Expression //右边的表达式
-    constructor(op: string, exp1: Expression, exp2: Expression) {
-        super()
+    constructor(
+        op: Op,
+        exp1: Expression,
+        exp2: Expression,
+        isErrorNode: boolean = false
+    ) {
+        super(exp1.beginPos, exp2.endPos, isErrorNode)
         this.op = op
         this.exp1 = exp1
         this.exp2 = exp2
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitBinary(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'Binary:' + this.op)
-        this.exp1.dump(prefix + '    ')
-        this.exp2.dump(prefix + '    ')
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitBinary(this, additional)
     }
 }
 
-/**
- * 表达式语句
- * 就是在表达式后面加个分号
- */
-export class ExpressionStatement extends Statement {
+export class Unary extends Expression {
+    op: Op
     exp: Expression
+    isPrefix: boolean
 
-    constructor(exp: Expression) {
-        super()
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        op: Op,
+        exp: Expression,
+        isPrefix: boolean,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
+        this.op = op
         this.exp = exp
+        this.isPrefix = isPrefix
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitExpressionStatement(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'ExpressionStatement')
-        this.exp.dump(prefix + '    ')
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitUnary(this, additional)
     }
 }
 
 /**
  * 函数调用
  */
-export class FunctionCall extends AstNode {
+export class FunctionCall extends Expression {
     name: string
-    parameters: Expression[]
-    decl: FunctionDecl | null = null //指向函数的声明
-    constructor(name: string, parameters: Expression[]) {
-        super()
+    arguments: Expression[]
+    sym: FunctionSymbol | null = null
+
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        name: string,
+        paramValues: Expression[],
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
         this.name = name
-        this.parameters = parameters
+        this.arguments = paramValues
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitFunctionCall(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'FunctionCall ' + this.name + (this.decl != null ? ', resolved' : ', not resolved'))
-        this.parameters.forEach((x) => x.dump(prefix + '    '))
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitFunctionCall(this, additional)
     }
 }
 
@@ -235,18 +407,19 @@ export class FunctionCall extends AstNode {
  */
 export class Variable extends Expression {
     name: string
-    decl: VariableDecl | null = null //指向变量声明
-    constructor(name: string) {
-        super()
+    sym: VarSymbol | null = null
+    constructor(
+        beginPos: Position,
+        endPos: Position,
+        name: string,
+        isErrorNode: boolean = false
+    ) {
+        super(beginPos, endPos, isErrorNode)
         this.name = name
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitVariable(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + 'Variable: ' + this.name + (this.decl != null ? ', resolved' : ', not resolved'))
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitVariable(this, additional)
     }
 }
 
@@ -256,17 +429,15 @@ export class Variable extends Expression {
 export class StringLiteral extends Expression {
     value: string
 
-    constructor(value: string) {
-        super()
+    constructor(pos: Position, value: string, isErrorNode: boolean = false) {
+        super(pos, pos, isErrorNode)
         this.value = value
+        this.theType = SysTypes.String
+        this.constValue = value
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitStringLiteral(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + this.value)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitStringLiteral(this, additional)
     }
 }
 
@@ -276,17 +447,15 @@ export class StringLiteral extends Expression {
 export class IntegerLiteral extends Expression {
     value: number
 
-    constructor(value: number) {
-        super()
+    constructor(pos: Position, value: number, isErrorNode: boolean = false) {
+        super(pos, pos, isErrorNode)
         this.value = value
+        this.theType = SysTypes.Integer
+        this.constValue = value
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitIntegerLiteral(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + this.value)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitIntegerLiteral(this, additional)
     }
 }
 
@@ -296,17 +465,15 @@ export class IntegerLiteral extends Expression {
 export class DecimalLiteral extends Expression {
     value: number
 
-    constructor(value: number) {
-        super()
+    constructor(pos: Position, value: number, isErrorNode: boolean = false) {
+        super(pos, pos, isErrorNode)
         this.value = value
+        this.theType = SysTypes.Decimal
+        this.constValue = value
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitDecimalLiteral(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + this.value)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitDecimalLiteral(this, additional)
     }
 }
 
@@ -316,16 +483,14 @@ export class DecimalLiteral extends Expression {
 export class NullLiteral extends Expression {
     value: null = null
 
-    constructor() {
-        super()
+    constructor(pos: Position, isErrorNode: boolean = false) {
+        super(pos, pos, isErrorNode)
+        this.theType = SysTypes.Null
+        this.constValue = this.value
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitNullLiteral(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + this.value)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitNullLiteral(this, additional)
     }
 }
 
@@ -335,30 +500,49 @@ export class NullLiteral extends Expression {
 export class BooleanLiteral extends Expression {
     value: boolean
 
-    constructor(value: boolean) {
-        super()
+    constructor(
+        pos: Position,
+
+        value: boolean,
+        isErrorNode: boolean = false
+    ) {
+        super(pos, pos, isErrorNode)
         this.value = value
+        this.theType = SysTypes.Boolean
+        this.constValue = value
     }
 
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitBooleanLiteral(this)
-    }
-
-    public dump(prefix: string): void {
-        console.log(prefix + this.value)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitBooleanLiteral(this, additional)
     }
 }
 
-export class VariableStatement extends Statement {
-    variableDecl: VariableDecl
-
-    constructor(beginPos: Position, endPos: Position, variableDecl: VariableDecl, isErrorNode: boolean = false) {
-        super(beginPos, endPos, isErrorNode)
-        this.variableDecl = variableDecl
+/**
+ * 代表一个错误的表达式
+ */
+export class ErrorExp extends Expression {
+    constructor(beginPos: Position, endPos: Position) {
+        super(beginPos, endPos, true)
+        this.isErrorNode = true
     }
 
     accept(visitor: AstVisitor, additional: any): any {
-        return visitor.visitVariableStatement(this, additional)
+        return visitor.visitErrorExp(this, additional)
+    }
+}
+
+/**
+ * 代表一个错误的语句
+ *
+ */
+export class ErrorStmt extends Statement {
+    constructor(beginPos: Position, endPos: Position) {
+        super(beginPos, endPos, true)
+        this.isErrorNode = true
+    }
+
+    accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitErrorStmt(this, additional)
     }
 }
 
@@ -377,19 +561,52 @@ export abstract class AstVisitor {
     }
 
     visitProg(prog: Prog, additional: any = undefined): any {
+        // 缺省是调用visitBlock的行为
         return this.visitBlock(prog, additional)
     }
 
-    visitVariableStatement(variableStmt: VariableStatement, additional: any = undefined) {}
+    visitVariableStatement(
+        variableStmt: VariableStatement,
+        additional: any = undefined
+    ) {
+        return this.visit(variableStmt.variableDecl, additional)
+    }
 
-    visitVariableDecl(variableDecl: VariableDecl): any {
+    visitVariableDecl(
+        variableDecl: VariableDecl,
+        additional: any = undefined
+    ): any {
         if (variableDecl.init != null) {
-            return this.visit(variableDecl.init)
+            return this.visit(variableDecl.init, additional)
         }
     }
 
-    visitFunctionDecl(functionDecl: FunctionDecl): any {
-        return this.visitBlock(functionDecl.body)
+    visitFunctionDecl(
+        functionDecl: FunctionDecl,
+        additional: any = undefined
+    ): any {
+        this.visit(functionDecl.callSignature, additional)
+        return this.visitBlock(functionDecl.body, additional)
+    }
+
+    visitCallSignature(
+        callSignature: CallSignature,
+        additional: any = undefined
+    ): any {
+        if (callSignature.paramList != null) {
+            return this.visit(callSignature.paramList, additional)
+        }
+    }
+
+    visitParameterList(
+        paramList: ParameterList,
+        additional: any = undefined
+    ): any {
+        let retVal: any
+        for (let x of paramList.params) {
+            retVal = this.visit(x, additional)
+        }
+        return retVal
     }
 
     visitBlock(block: Block, additional: any = undefined): any {
@@ -400,40 +617,91 @@ export abstract class AstVisitor {
         return retVal
     }
 
-    visitExpressionStatement(stmt: ExpressionStatement): any {
+    visitExpressionStatement(
+        stmt: ExpressionStatement,
+        additional: any = undefined
+    ): any {
         return this.visit(stmt.exp)
     }
 
-    visitBinary(exp: Binary): any {
+    visitReturnStatement(
+        stmt: ReturnStatement,
+        additional: any = undefined
+    ): any {
+        if (stmt.exp != null) {
+            return this.visit(stmt.exp, additional)
+        }
+    }
+
+    visitIfStatement(stmt: IfStatement, additional: any = undefined): any {
+        this.visit(stmt.condition, additional)
+        this.visit(stmt.stmt, additional)
+        if (stmt.elseStmt != null) {
+            this.visit(stmt.elseStmt, additional)
+        }
+    }
+
+    visitForStatement(stmt: ForStatement, additional: any = undefined): any {
+        if (stmt.init != null) {
+            this.visit(stmt.init, additional)
+        }
+        if (stmt.condition != null) {
+            this.visit(stmt.condition, additional)
+        }
+        if (stmt.increment != null) {
+            this.visit(stmt.increment, additional)
+        }
+        this.visit(stmt.stmt, additional)
+    }
+
+    visitBinary(exp: Binary, additional: any = undefined): any {
         this.visit(exp.exp1)
         this.visit(exp.exp2)
     }
 
-    visitIntegerLiteral(exp: IntegerLiteral): any {
+    visitUnary(exp: Unary, additional: any = undefined): any {
+        this.visit(exp.exp, additional)
+    }
+
+    visitIntegerLiteral(exp: IntegerLiteral, additional: any = undefined): any {
         return exp.value
     }
 
-    visitDecimalLiteral(exp: DecimalLiteral): any {
+    visitDecimalLiteral(exp: DecimalLiteral, additional: any = undefined): any {
         return exp.value
     }
 
-    visitStringLiteral(exp: StringLiteral): any {
+    visitStringLiteral(exp: StringLiteral, additional: any = undefined): any {
         return exp.value
     }
 
-    visitNullLiteral(exp: NullLiteral): any {
+    visitNullLiteral(exp: NullLiteral, additional: any = undefined): any {
         return exp.value
     }
 
-    visitBooleanLiteral(exp: BooleanLiteral): any {
+    visitBooleanLiteral(exp: BooleanLiteral, additional: any = undefined): any {
         return exp.value
     }
 
-    visitVariable(variable: Variable): any {
+    visitVariable(variable: Variable, additional: any = undefined): any {
         return undefined
     }
 
-    visitFunctionCall(functionCall: FunctionCall): any {
+    visitFunctionCall(
+        functionCall: FunctionCall,
+        additional: any = undefined
+    ): any {
+        for (let param of functionCall.arguments) {
+            this.visit(param, additional)
+        }
+        return undefined
+    }
+
+    visitErrorExp(errNode: ErrorExp, additional: any = undefined): any {
+        return undefined
+    }
+
+    visitErrorStmt(errStmt: ErrorStmt, additional: any = undefined): any {
         return undefined
     }
 }
@@ -446,5 +714,234 @@ export class AstDumper extends AstVisitor {
         }
     }
 
-    visitVariableStatement(variableStmt: VariableStatement, prefix: any) {}
+    visitVariableStatement(variableStmt: VariableStatement, prefix: any) {
+        console.log(
+            prefix +
+                'VariableStatement ' +
+                (variableStmt.isErrorNode ? ' **E** ' : '')
+        )
+        this.visit(variableStmt.variableDecl, prefix + '    ')
+    }
+
+    visitVariableDecl(variableDecl: VariableDecl, prefix: any): any {
+        console.log(
+            prefix +
+                'VariableDecl ' +
+                variableDecl.name +
+                (variableDecl.theType == null
+                    ? ''
+                    : '(' + variableDecl.theType.name + ')') +
+                (variableDecl.isErrorNode ? ' **E** ' : '')
+        )
+        if (variableDecl.init == null) {
+            console.log(prefix + 'no initialization.')
+        } else {
+            this.visit(variableDecl.init, prefix + '    ')
+        }
+    }
+
+    visitFunctionDecl(functionDecl: FunctionDecl, prefix: any): any {
+        console.log(
+            prefix +
+                'FunctionDecl ' +
+                functionDecl.name +
+                (functionDecl.isErrorNode ? ' **E** ' : '')
+        )
+        this.visit(functionDecl.callSignature, prefix + '    ')
+        this.visit(functionDecl.body, prefix + '    ')
+    }
+
+    visitCallSignature(callSinature: CallSignature, prefix: any): any {
+        console.log(
+            prefix +
+                (callSinature.isErrorNode ? ' **E** ' : '') +
+                'Return type: ' +
+                callSinature.theType.name
+        )
+        if (callSinature.paramList != null) {
+            this.visit(callSinature.paramList, prefix + '    ')
+        }
+    }
+
+    visitParameterList(paramList: ParameterList, prefix: any): any {
+        console.log(
+            prefix +
+                'ParamList:' +
+                (paramList.isErrorNode ? ' **E** ' : '') +
+                (paramList.params.length == 0 ? 'none' : '')
+        )
+        for (let x of paramList.params) {
+            this.visit(x, prefix + '    ')
+        }
+    }
+
+    visitBlock(block: Block, prefix: any): any {
+        if (block.isErrorNode) {
+            console.log(prefix + 'Block' + (block.isErrorNode ? ' **E** ' : ''))
+        }
+        for (let x of block.stmts) {
+            this.visit(x, prefix + '    ')
+        }
+    }
+
+    visitExpressionStatement(stmt: ExpressionStatement, prefix: any): any {
+        console.log(
+            prefix + 'ExpressionStatement' + (stmt.isErrorNode ? ' **E** ' : '')
+        )
+        return this.visit(stmt.exp, prefix + '    ')
+    }
+
+    visitReturnStatement(stmt: ReturnStatement, prefix: any): any {
+        console.log(
+            prefix + 'ReturnStatement' + (stmt.isErrorNode ? ' **E** ' : '')
+        )
+        if (stmt.exp != null) {
+            return this.visit(stmt.exp, prefix + '    ')
+        }
+    }
+
+    visitIfStatement(stmt: IfStatement, prefix: any): any {
+        console.log(
+            prefix + 'IfStatement' + (stmt.isErrorNode ? ' **E** ' : '')
+        )
+        console.log(prefix + '    Condition:')
+        this.visit(stmt.condition, prefix + '    ')
+        console.log(prefix + '    Then:')
+        this.visit(stmt.stmt, prefix + '    ')
+        if (stmt.elseStmt != null) {
+            console.log(prefix + '    Else:')
+            this.visit(stmt.elseStmt, prefix + '    ')
+        }
+    }
+
+    visitForStatement(stmt: ForStatement, prefix: any): any {
+        console.log(
+            prefix + 'ForStatement' + (stmt.isErrorNode ? ' **E** ' : '')
+        )
+        if (stmt.init != null) {
+            console.log(prefix + '    Init:')
+            this.visit(stmt.init, prefix + '    ')
+        }
+        if (stmt.condition != null) {
+            console.log(prefix + '    Condition:')
+            this.visit(stmt.condition, prefix + '    ')
+        }
+        if (stmt.increment != null) {
+            console.log(prefix + '    Increment:')
+            this.visit(stmt.increment, prefix + '    ')
+        }
+        console.log(prefix + '    Body:')
+        this.visit(stmt.stmt, prefix + '    ')
+    }
+
+    visitBinary(exp: Binary, prefix: any): any {
+        console.log(
+            prefix +
+                'Binary:' +
+                Op[exp.op] +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+        this.visit(exp.exp1, prefix + '    ')
+        this.visit(exp.exp2, prefix + '    ')
+    }
+
+    visitUnary(exp: Unary, prefix: any): any {
+        console.log(
+            prefix +
+                (exp.isPrefix ? 'Prefix ' : 'PostFix ') +
+                'Unary:' +
+                Op[exp.op] +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+        this.visit(exp.exp, prefix + '    ')
+    }
+
+    visitIntegerLiteral(exp: IntegerLiteral, prefix: any): any {
+        console.log(
+            prefix +
+                exp.value +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+    }
+
+    visitDecimalLiteral(exp: DecimalLiteral, prefix: any): any {
+        console.log(
+            prefix +
+                exp.value +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+    }
+
+    visitStringLiteral(exp: StringLiteral, prefix: any): any {
+        console.log(
+            prefix +
+                exp.value +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+    }
+
+    visitNullLiteral(exp: NullLiteral, prefix: any): any {
+        console.log(
+            prefix +
+                exp.value +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+    }
+
+    visitBooleanLiteral(exp: BooleanLiteral, prefix: any): any {
+        console.log(
+            prefix +
+                exp.value +
+                (exp.theType == null ? '' : '(' + exp.theType.name + ')') +
+                (exp.isErrorNode ? ' **E** ' : '')
+        )
+    }
+
+    visitVariable(variable: Variable, prefix: any): any {
+        console.log(
+            prefix +
+                'Variable: ' +
+                (variable.isErrorNode ? ' **E** ' : '') +
+                variable.name +
+                (variable.theType == null
+                    ? ''
+                    : '(' + variable.theType.name + ')') +
+                (variable.isLeftValue ? ', LeftValue' : '') +
+                (variable.sym != null ? ', resolved' : ', not resolved')
+        )
+    }
+
+    visitFunctionCall(functionCall: FunctionCall, prefix: any): any {
+        console.log(
+            prefix +
+                'FunctionCall ' +
+                (functionCall.theType == null
+                    ? ''
+                    : '(' + functionCall.theType.name + ')') +
+                (functionCall.isErrorNode ? ' **E** ' : '') +
+                functionCall.name +
+                (built_ins.has(functionCall.name)
+                    ? ', built-in'
+                    : functionCall.sym != null
+                    ? ', resolved'
+                    : ', not resolved')
+        )
+        for (let param of functionCall.arguments) {
+            this.visit(param, prefix + '    ')
+        }
+    }
+
+    visitErrorExp(errorNode: ErrorExp, prefix: any): any {
+        console.log(prefix + 'Error Expression **E**')
+    }
+
+    visitErrorStmt(errorStmt: ErrorStmt, prefix: any): any {
+        console.log(prefix + 'Error Statement **E**')
+    }
 }

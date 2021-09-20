@@ -119,7 +119,11 @@ export class FunctionType extends Type {
     paramTypes: Type[]
     static index: number = 0
 
-    constructor(returnType: Type = SysTypes.Void, paramTypes: Type[] = [], name: string | undefined = undefined) {
+    constructor(
+        returnType: Type = SysTypes.Void,
+        paramTypes: Type[] = [],
+        name: string | undefined = undefined
+    ) {
         super('@function')
         this.returnType = returnType
         this.paramTypes = paramTypes

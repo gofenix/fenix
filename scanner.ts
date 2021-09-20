@@ -1,7 +1,5 @@
 ///////////////////////////////////词法分析////////////////////////////////////////////////////////////////////////
 
-import { Position } from './ast'
-
 // token 类型
 export enum TokenKind {
     Keyword,
@@ -23,7 +21,12 @@ export class Token {
     text: string
     pos: Position
 
-    constructor(kind: TokenKind, text: string, pos: Position, code: Op | Seperator | Keyword | null = null) {
+    constructor(
+        kind: TokenKind,
+        text: string,
+        pos: Position,
+        code: Op | Seperator | Keyword | null = null
+    ) {
         this.kind = kind
         this.text = text
         this.pos = pos
@@ -31,7 +34,9 @@ export class Token {
     }
 
     toString(): string {
-        return `Token@${this.pos.toString()}\t${TokenKind[this.kind]}\t${this.text}`
+        return `Token@${this.pos.toString()}\t${TokenKind[this.kind]}\t${
+            this.text
+        }`
     }
 }
 
@@ -313,28 +318,63 @@ export class Scanner {
                 return this.parseStringLiteral()
             } else if (ch == '(') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.OpenParen)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.OpenParen
+                )
             } else if (ch == ')') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.CloseParen)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.CloseParen
+                )
             } else if (ch == '[') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.OpenBracket)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.OpenBracket
+                )
             } else if (ch == ']') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.CloseBracket)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.CloseBracket
+                )
             } else if (ch == '{') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.OpenBrace)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.OpenBrace
+                )
             } else if (ch == '}') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.CloseBrace)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.CloseBrace
+                )
             } else if (ch == ':') {
                 this.stream.next()
                 return new Token(TokenKind.Seperator, ch, pos, Seperator.Colon)
             } else if (ch == ';') {
                 this.stream.next()
-                return new Token(TokenKind.Seperator, ch, pos, Seperator.SemiColon)
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.SemiColon
+                )
             } else if (ch == ',') {
                 this.stream.next()
                 return new Token(TokenKind.Seperator, ch, pos, Op.Comma)
@@ -414,7 +454,12 @@ export class Scanner {
                     ch1 = this.stream.peek()
                     if (ch1 == '.') {
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Seperator, '...', pos, Op.Ellipsis)
+                        return new Token(
+                            TokenKind.Seperator,
+                            '...',
+                            pos,
+                            Op.Ellipsis
+                        )
                     } else {
                         console.log('Unrecognized pattern: .., missed a . ?')
                         return this.getAToken()
@@ -436,7 +481,12 @@ export class Scanner {
                 } else if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '/=', pos, Op.DivideAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '/=',
+                        pos,
+                        Op.DivideAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '/', pos, Op.Divide)
                 }
@@ -450,7 +500,12 @@ export class Scanner {
                 } else if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '+=', pos, Op.PlusAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '+=',
+                        pos,
+                        Op.PlusAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '+', pos, Op.Plus)
                 }
@@ -464,7 +519,12 @@ export class Scanner {
                 } else if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '-=', pos, Op.MinusAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '-=',
+                        pos,
+                        Op.MinusAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '-', pos, Op.Minus)
                 }
@@ -474,7 +534,12 @@ export class Scanner {
                 if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '*=', pos, Op.MultiplyAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '*=',
+                        pos,
+                        Op.MultiplyAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '*', pos, Op.Multiply)
                 }
@@ -484,7 +549,12 @@ export class Scanner {
                 if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '%=', pos, Op.ModulusAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '%=',
+                        pos,
+                        Op.ModulusAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '%', pos, Op.Modulus)
                 }
@@ -504,18 +574,38 @@ export class Scanner {
                         if (ch1 == '=') {
                             this.stream.next()
                             pos.end = this.stream.pos + 1
-                            return new Token(TokenKind.Operator, '>>>=', pos, Op.RightShiftLogicalAssign)
+                            return new Token(
+                                TokenKind.Operator,
+                                '>>>=',
+                                pos,
+                                Op.RightShiftLogicalAssign
+                            )
                         } else {
                             pos.end = this.stream.pos + 1
-                            return new Token(TokenKind.Operator, '>>>', pos, Op.RightShiftLogical)
+                            return new Token(
+                                TokenKind.Operator,
+                                '>>>',
+                                pos,
+                                Op.RightShiftLogical
+                            )
                         }
                     } else if (ch1 == '=') {
                         this.stream.next()
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '>>=', pos, Op.RightShiftArithmeticAssign)
+                        return new Token(
+                            TokenKind.Operator,
+                            '>>=',
+                            pos,
+                            Op.RightShiftArithmeticAssign
+                        )
                     } else {
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '>>', pos, Op.RightShiftArithmetic)
+                        return new Token(
+                            TokenKind.Operator,
+                            '>>',
+                            pos,
+                            Op.RightShiftArithmetic
+                        )
                     }
                 } else {
                     return new Token(TokenKind.Operator, '>', pos, Op.G)
@@ -534,10 +624,20 @@ export class Scanner {
                     if (ch1 == '=') {
                         this.stream.next()
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '<<=', pos, Op.LeftShiftArithmeticAssign)
+                        return new Token(
+                            TokenKind.Operator,
+                            '<<=',
+                            pos,
+                            Op.LeftShiftArithmeticAssign
+                        )
                     } else {
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '<<', pos, Op.LeftShiftArithmetic)
+                        return new Token(
+                            TokenKind.Operator,
+                            '<<',
+                            pos,
+                            Op.LeftShiftArithmetic
+                        )
                     }
                 } else {
                     return new Token(TokenKind.Operator, '<', pos, Op.L)
@@ -551,7 +651,12 @@ export class Scanner {
                     if (ch1 == '=') {
                         this.stream.next()
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '===', pos, Op.IdentityEquals)
+                        return new Token(
+                            TokenKind.Operator,
+                            '===',
+                            pos,
+                            Op.IdentityEquals
+                        )
                     } else {
                         pos.end = this.stream.pos + 1
                         return new Token(TokenKind.Operator, '==', pos, Op.EQ)
@@ -573,7 +678,12 @@ export class Scanner {
                     if (ch1 == '=') {
                         this.stream.next()
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '!==', pos, Op.IdentityNotEquals)
+                        return new Token(
+                            TokenKind.Operator,
+                            '!==',
+                            pos,
+                            Op.IdentityNotEquals
+                        )
                     } else {
                         pos.end = this.stream.pos + 1
                         return new Token(TokenKind.Operator, '!', pos, Op.Not)
@@ -591,7 +701,12 @@ export class Scanner {
                 } else if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '|=', pos, Op.BitOrAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '|=',
+                        pos,
+                        Op.BitOrAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '|', pos, Op.BitOr)
                 }
@@ -605,7 +720,12 @@ export class Scanner {
                 } else if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '&=', pos, Op.BitAndAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '&=',
+                        pos,
+                        Op.BitAndAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '&', pos, Op.BitAnd)
                 }
@@ -615,7 +735,12 @@ export class Scanner {
                 if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
-                    return new Token(TokenKind.Operator, '^=', pos, Op.BitXorAssign)
+                    return new Token(
+                        TokenKind.Operator,
+                        '^=',
+                        pos,
+                        Op.BitXorAssign
+                    )
                 } else {
                     return new Token(TokenKind.Operator, '^', pos, Op.BitOr)
                 }
@@ -625,7 +750,12 @@ export class Scanner {
             } else {
                 // 暂时去掉不能识别的字符
                 console.log(
-                    "Unrecognized pattern meeting ': " + ch + ', at ' + this.stream.line + ' col: ' + this.stream.col
+                    "Unrecognized pattern meeting ': " +
+                        ch +
+                        ', at ' +
+                        this.stream.line +
+                        ' col: ' +
+                        this.stream.col
                 )
                 this.stream.next()
                 return this.getAToken()
@@ -695,7 +825,12 @@ export class Scanner {
             // 消化掉字符换末尾的引号
             this.stream.next()
         } else {
-            console.log('Expecting an " at line: ' + this.stream.line + ' col: ' + this.stream.col)
+            console.log(
+                'Expecting an " at line: ' +
+                    this.stream.line +
+                    ' col: ' +
+                    this.stream.col
+            )
         }
         pos.end = this.stream.pos + 1
         return token
@@ -710,7 +845,10 @@ export class Scanner {
         token.text += this.stream.next()
 
         // 读入后序字符
-        while (!this.stream.eof() && this.isLetterDigitOrUnderscore(this.stream.peek())) {
+        while (
+            !this.stream.eof() &&
+            this.isLetterDigitOrUnderscore(this.stream.peek())
+        ) {
             token.text += this.stream.next()
         }
 
@@ -736,7 +874,12 @@ export class Scanner {
     }
 
     private isLetterDigitOrUnderscore(ch: string): boolean {
-        return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'
+        return (
+            (ch >= 'A' && ch <= 'Z') ||
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch == '_'
+        )
     }
 
     private isLetter(ch: string): boolean {
@@ -749,5 +892,23 @@ export class Scanner {
 
     private isWhiteSpace(ch: string): boolean {
         return ch == ' ' || ch == '\n' || ch == '\t'
+    }
+}
+
+export class Position {
+    begin: number
+    end: number
+    line: number
+    col: number
+
+    constructor(begin: number, end: number, line: number, col: number) {
+        this.begin = begin
+        this.end = end
+        this.line = line
+        this.col = col
+    }
+
+    toString() {
+        return `(ln: ${this.line}, col: ${this.col}, pos: ${this.begin})`
     }
 }

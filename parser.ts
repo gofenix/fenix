@@ -111,7 +111,10 @@ export class Parser {
         ) {
             return this.parseExpressionStatement()
         } else {
-            console.log('Can not recognize a expression starting with: ' + this.scanner.peek().text)
+            console.log(
+                'Can not recognize a expression starting with: ' +
+                    this.scanner.peek().text
+            )
             return null
         }
     }
@@ -156,11 +159,17 @@ export class Parser {
                 this.scanner.next()
                 return new VariableDecl(varName, varType, init)
             } else {
-                console.log('Expecting ; at the end of variable declaration, while we meet ' + t1.text)
+                console.log(
+                    'Expecting ; at the end of variable declaration, while we meet ' +
+                        t1.text
+                )
                 return null
             }
         } else {
-            console.log('Expecting variable name in VariableDecl, while we meet ' + t.text)
+            console.log(
+                'Expecting variable name in VariableDecl, while we meet ' +
+                    t.text
+            )
             return null
         }
     }
@@ -184,15 +193,22 @@ export class Parser {
                         //如果解析成功，从这里返回
                         return new FunctionDecl(t.text, functionBody)
                     } else {
-                        console.log('Error parsing FunctionBody in FunctionDecl')
+                        console.log(
+                            'Error parsing FunctionBody in FunctionDecl'
+                        )
                         return null
                     }
                 } else {
-                    console.log("Expecting '(' in FunctionDecl, while we got a " + t.text)
+                    console.log(
+                        "Expecting '(' in FunctionDecl, while we got a " +
+                            t.text
+                    )
                     return null
                 }
             } else {
-                console.log("Expecting '(' in FunctionDecl, while we got a " + t.text)
+                console.log(
+                    "Expecting '(' in FunctionDecl, while we got a " + t.text
+                )
                 return null
             }
         } else {
@@ -214,11 +230,15 @@ export class Parser {
             if (t.text == '}') {
                 return new Block(stmts)
             } else {
-                console.log("Expecting '}' in FunctionBody, while we got a " + t.text)
+                console.log(
+                    "Expecting '}' in FunctionBody, while we got a " + t.text
+                )
                 return null
             }
         } else {
-            console.log("Expecting '{' in FunctionBody, while we got a " + t.text)
+            console.log(
+                "Expecting '{' in FunctionBody, while we got a " + t.text
+            )
             return null
         }
     }
@@ -234,7 +254,10 @@ export class Parser {
                 this.scanner.next()
                 return new ExpressionStatement(exp)
             } else {
-                console.log('Expecting a semicolon at the end of an expression statement, while we got a ' + t.text)
+                console.log(
+                    'Expecting a semicolon at the end of an expression statement, while we got a ' +
+                        t.text
+                )
                 return null
             }
         } else {
@@ -321,13 +344,19 @@ export class Parser {
                     t = this.scanner.peek()
                     tprec = this.getPrec(t.text)
                 } else {
-                    console.log('Can not recognize a expression starting with: ' + t.text)
+                    console.log(
+                        'Can not recognize a expression starting with: ' +
+                            t.text
+                    )
                     return null
                 }
             }
             return exp1
         } else {
-            console.log('Can not recognize a expression starting with: ' + this.scanner.peek().text)
+            console.log(
+                'Can not recognize a expression starting with: ' +
+                    this.scanner.peek().text
+            )
             return null
         }
         return null
@@ -366,11 +395,17 @@ export class Parser {
                 this.scanner.next()
                 return exp
             } else {
-                console.log("Expecting a ')' at the end of primary expression, while we got a " + t.text)
+                console.log(
+                    "Expecting a ')' at the end of primary expression, while we got a " +
+                        t.text
+                )
                 return null
             }
         } else {
-            console.log('Can not recognize a primary expression starting with: ' + t.text)
+            console.log(
+                'Can not recognize a primary expression starting with: ' +
+                    t.text
+            )
             return null
         }
     }
@@ -401,7 +436,10 @@ export class Parser {
                         if (t1.text == ',') {
                             t1 = this.scanner.next()
                         } else {
-                            console.log('Expecting a comma at the end of a function call, while we got a ' + t.text)
+                            console.log(
+                                'Expecting a comma at the end of a function call, while we got a ' +
+                                    t.text
+                            )
                             return null
                         }
                     }
