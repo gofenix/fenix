@@ -26,21 +26,27 @@
 import {
     Binary,
     Block,
+    CallSignature,
     DecimalLiteral,
     Expression,
     ExpressionStatement,
+    ForStatement,
     FunctionCall,
     FunctionDecl,
+    IfStatement,
     IntegerLiteral,
-    Position,
+    ParameterList,
     Prog,
+    ReturnStatement,
     Statement,
     StringLiteral,
     Variable,
     VariableDecl,
+    VariableStatement,
 } from './ast'
 import { CompileError } from './error'
-import { Scanner, TokenKind, Token } from './scanner'
+import { Scanner, TokenKind, Token, Position } from './scanner'
+import { Type } from './types'
 
 export class Parser {
     scanner: Scanner
@@ -69,7 +75,7 @@ export class Parser {
         let beginPos = this.scanner.peek().pos
         let stmts = this.parseStatementList()
 
-        return new Prog(this.parseStatementList())
+        return new Prog(beginPos, this.scanner.getLastPos(), stmts)
     }
 
     parseStatementList(): Statement[] {
@@ -118,6 +124,14 @@ export class Parser {
             return null
         }
     }
+
+    parseReturnStatement(): ReturnStatement {}
+
+    parseIfStatement(): IfStatement {}
+
+    parseForStatement(): ForStatement {}
+
+    parseVariableStatement(): VariableStatement {}
 
     /**
      * 解析变量
@@ -174,6 +188,8 @@ export class Parser {
         }
     }
 
+    private parseType(typeName: string): Type {}
+
     /**
      * 解析函数声明
      */
@@ -217,6 +233,14 @@ export class Parser {
         }
         return null
     }
+
+    parseCallSignature(): CallSignature {}
+
+    parseParameterList(): ParameterList {}
+
+    parseTypeAnnotation(): string {}
+
+    parseBlock(): Block {}
 
     /**
      * 解析函数体
