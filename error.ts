@@ -1,4 +1,4 @@
-import { Position } from './ast'
+import { Position } from './scanner'
 
 export class CompileError {
     msg: string

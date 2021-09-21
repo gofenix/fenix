@@ -1,5 +1,4 @@
-import { ForStatement } from 'typescript'
-import { AstVisitor, Block, FunctionDecl } from './ast'
+import { AstVisitor, Block, ForStatement, FunctionDecl } from './ast'
 import { Symbol, SymbolDumper } from './symbol'
 
 export class Scope {
@@ -62,8 +61,16 @@ export class ScopeDumper extends AstVisitor {
         super.visitBlock(block, prefix + '\ts')
     }
 
-    visitForStatement(stmt) {
-        // todo
+    visitForStatement(stmt: ForStatement, prefix: any) {
+        console.log(prefix + 'scope of for statement')
+        if (stmt.scope != null) {
+            this.dumpScope(stmt.scope, prefix)
+        } else {
+            console.log(`${prefix}{null}`)
+        }
+
+        // 继续
+        super.visitForStatement(stmt, prefix)
     }
 
     private dumpScope(scope: Scope, prefix: string) {

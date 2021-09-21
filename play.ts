@@ -1,25 +1,8 @@
 ///////////////////////////////////////////////////////////////
 // 解释器
 
-import { Token, TokenKind, Scanner, CharStream } from './scanner'
-import {
-    AstVisitor,
-    AstNode,
-    Block,
-    Prog,
-    VariableDecl,
-    FunctionDecl,
-    FunctionCall,
-    Statement,
-    Expression,
-    ExpressionStatement,
-    Binary,
-    IntegerLiteral,
-    DecimalLiteral,
-    StringLiteral,
-    Variable,
-    AstDumper,
-} from './ast'
+import { TokenKind, Scanner, CharStream } from './scanner'
+import { Prog, AstDumper } from './ast'
 import { Parser } from './parser'
 
 ///////////////////////////////////////////////////主程序/////////////////////////////////////////////////////////////////////
