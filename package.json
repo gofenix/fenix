@@ -8,7 +8,9 @@
     "devDependencies": {
         "husky": "^7.0.2",
         "lint-staged": "^11.1.2",
-        "prettier": "2.4.0"
+        "prettier": "2.4.0",
+        "ts-node": "^10.2.1",
+        "typescript": "^4.4.3"
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",

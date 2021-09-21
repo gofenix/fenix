@@ -623,8 +623,8 @@ class TypeConverter extends SemanticAstVisitor {
                 }
             }
         } else if (bi.op == Op.Plus) {
-            // 有一边是string，或者两边都是number才行
-            if (t1 === SysTypes.String || t1 === SysTypes.String) {
+            //有一边是string，或者两边都是number才行。
+            if (t1 === SysTypes.String || t2 === SysTypes.String) {
                 if (t1 === SysTypes.Integer || t1 === SysTypes.Number) {
                     let exp = new FunctionCall(
                         bi.exp1.beginPos,
@@ -657,9 +657,9 @@ class TypeConverter extends SemanticAstVisitor {
         if (functionCall.sym != null) {
             let functionType = functionCall.sym.theType as FunctionType
 
-            // 查看参数有没有可以转换的
+            //看看参数有没有可以转换的。
             for (let i = 0; i < functionCall.arguments.length; i++) {
-                this.visit(functionCall.arguments[1])
+                this.visit(functionCall.arguments[i])
                 if (i < functionType.paramTypes.length) {
                     let t1 = functionCall.arguments[i].theType as Type
                     let t2 = functionType.paramTypes[i] as Type

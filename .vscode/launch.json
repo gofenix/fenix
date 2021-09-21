@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceRoot}/node_modules/.bin/ts-node",
 
-            "args": ["${relativeFile}"],
+            "args": ["play.ts"],
             "cwd": "${workspaceRoot}",
             "protocol": "inspector",
             "resolveSourceMapLocations": [

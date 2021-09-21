@@ -34,9 +34,16 @@ export class Token {
     }
 
     toString(): string {
-        return `Token@${this.pos.toString()}\t${TokenKind[this.kind]}\t${
-            this.text
-        }`
+        return (
+            'Token' +
+            '@' +
+            this.pos.toString() +
+            '\t' +
+            TokenKind[this.kind] +
+            " \t'" +
+            this.text +
+            "'"
+        )
     }
 }
 
