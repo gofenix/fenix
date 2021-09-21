@@ -9,79 +9,103 @@
  * 当前语法规则：
  * prog = statementList? EOF;
  * statementList = (variableDecl | functionDecl | expressionStatement)+ ;
- * variableDecl : 'let' Identifier typeAnnotation？ ('=' singleExpression) ';';
+ * statement: block | expressionStatement | returnStatement | ifStatement | forStatement
+ *          | emptyStatement | functionDecl | variableDecl ;
+ * block : '{' statementList? '}' ;
+ * ifStatement : 'if' '(' expression ')' statement ('else' statement)? ;
+ * forStatement : 'for' '(' (expression | 'let' variableDecl)? ';' expression? ';' expression? ')' statement ;
+ * variableStatement : 'let' variableDecl ';';
+ * variableDecl : Identifier typeAnnotation？ ('=' expression)? ;
  * typeAnnotation : ':' typeName;
- * functionDecl: "function" Identifier "(" ")"  functionBody;
- * functionBody : '{' statementList? '}' ;
- * statement: functionDecl | expressionStatement;
+ * functionDecl: "function" Identifier callSignature  block ;
+ * callSignature: '(' parameterList? ')' typeAnnotation? ;
+ * returnStatement: 'return' expression? ';' ;
+ * emptyStatement: ';' ;
  * expressionStatement: expression ';' ;
- * expression: primary (binOP primary)* ;
+ * expression: assignment;
+ * assignment: binary (assignmentOp binary)* ;
+ * binary: unary (binOp unary)* ;
+ * unary: primary | prefixOp unary | primary postfixOp ;
  * primary: StringLiteral | DecimalLiteral | IntegerLiteral | functionCall | '(' expression ')' ;
- * binOP: '+' | '-' | '*' | '/' | '=' | '+=' | '-=' | '*=' | '/=' | '==' | '!=' | '<=' | '>=' | '<'
+ * assignmentOp = '=' | '+=' | '-=' | '*=' | '/=' | '>>=' | '<<=' | '>>>=' | '^=' | '|=' ;
+ * binOp: '+' | '-' | '*' | '/' | '==' | '!=' | '<=' | '>=' | '<'
  *      | '>' | '&&'| '||'|...;
- * functionCall : Identifier '(' parameterList? ')' ;
- * parameterList : expression (',' expression)* ;
+ * prefixOp = '+' | '-' | '++' | '--' | '!' | '~';
+ * postfixOp = '++' | '--';
+ * functionCall : Identifier '(' argumentList? ')' ;
+ * argumentList : expression (',' expression)* ;
  */
 
-import { type } from 'os'
 import {
-    Binary,
-    Block,
-    CallSignature,
-    DecimalLiteral,
-    ErrorExp,
-    ErrorStmt,
-    Expression,
-    ExpressionStatement,
-    ForStatement,
-    FunctionCall,
-    FunctionDecl,
-    IfStatement,
-    IntegerLiteral,
-    ParameterList,
-    Prog,
-    ReturnStatement,
-    Statement,
-    StringLiteral,
-    Unary,
-    Variable,
-    VariableDecl,
-    VariableStatement,
-} from './ast'
-import { CompileError } from './error'
-import {
-    Scanner,
-    TokenKind,
     Token,
-    Position,
+    TokenKind,
+    Scanner,
+    Op,
     Seperator,
     Keyword,
-    Op,
+    Position,
 } from './scanner'
+import {
+    AstVisitor,
+    AstNode,
+    Block,
+    Prog,
+    VariableStatement,
+    VariableDecl,
+    FunctionDecl,
+    CallSignature,
+    ParameterList,
+    FunctionCall,
+    Statement,
+    Expression,
+    ExpressionStatement,
+    Binary,
+    Unary,
+    IntegerLiteral,
+    DecimalLiteral,
+    StringLiteral,
+    NullLiteral,
+    BooleanLiteral,
+    Variable,
+    ReturnStatement,
+    IfStatement,
+    ForStatement,
+    ErrorExp,
+    ErrorStmt,
+} from './ast'
 import { SysTypes, Type } from './types'
+import { CompilerError } from './error'
 
+////////////////////////////////////////////////////////////////////////////////
+//Parser
+
+/**
+ * 语法解析器。
+ * 通常用parseProg()作为入口，解析整个程序。也可以用下级的某个节点作为入口，只解析一部分语法。
+ */
 export class Parser {
     scanner: Scanner
-
     constructor(scanner: Scanner) {
         this.scanner = scanner
     }
 
-    errors: CompileError[] = []
-    warnings: CompileError[] = []
+    errors: CompilerError[] = [] //语法错误
+    warnings: CompilerError[] = [] //语法报警
 
     addError(msg: string, pos: Position) {
-        this.errors.push(new CompileError(msg, pos, false))
-        console.log(`@${pos.toString()}: ${msg}`)
+        this.errors.push(new CompilerError(msg, pos, false))
+        console.log('@' + pos.toString() + ' : ' + msg)
     }
 
     addWarning(msg: string, pos: Position) {
-        this.errors.push(new CompileError(msg, pos, false))
-        console.log(`@${pos.toString()}: ${msg}`)
+        this.warnings.push(new CompilerError(msg, pos, true))
+        console.log('@' + pos.toString() + ' : ' + msg)
     }
 
     /**
-     * 解析prog
+     * 解析Prog
+     * 语法规则：
+     * prog = (functionDecl | functionCall)* ;
      */
     parseProg(): Prog {
         let beginPos = this.scanner.peek().pos
@@ -93,38 +117,38 @@ export class Parser {
     parseStatementList(): Statement[] {
         let stmts: Statement[] = []
         let t = this.scanner.peek()
-
-        // statementList的Follow集合里有EOF和}两个元素，分别用于prog和functionBody等场景
+        //statementList的Follow集合里有EOF和'}'这两个元素，分别用于prog和Block等场景。
         while (t.kind != TokenKind.EOF && t.code != Seperator.CloseBrace) {
+            //'}'
             let stmt = this.parseStatement()
             stmts.push(stmt)
-
             t = this.scanner.peek()
         }
         return stmts
     }
 
     /**
-     * 解析语句
-     * 知识点
-     * 在这里，遇到函数调用、变量声明和变量赋值，都可能以Identifier开头的情况
-     * 所以预读一个token是不够的。
+     * 解析语句。
+     * 知识点：在这里，遇到了函数调用、变量声明和变量赋值，都可能是以Identifier开头的情况，所以预读一个Token是不够的，
+     * 所以这里预读了两个Token。
      */
     parseStatement(): Statement {
         let t = this.scanner.peek()
-
-        // 根据function关键字，去解析函数声明
+        //根据'function'关键字，去解析函数声明
         if (t.code == Keyword.Function) {
             return this.parseFunctionDecl()
         } else if (t.code == Keyword.Let) {
             return this.parseVariableStatement()
-        } else if (t.code == Keyword.Return) {
+        }
+        //根据'return'关键字，解析return语句
+        else if (t.code == Keyword.Return) {
             return this.parseReturnStatement()
         } else if (t.code == Keyword.If) {
             return this.parseIfStatement()
         } else if (t.code == Keyword.For) {
             return this.parseForStatement()
         } else if (t.code == Seperator.OpenBrace) {
+            //'{'
             return this.parseBlock()
         } else if (
             t.kind == TokenKind.Identifier ||
@@ -133,6 +157,7 @@ export class Parser {
             t.kind == TokenKind.StringLiteral ||
             t.code == Seperator.OpenParen
         ) {
+            //'('
             return this.parseExpressionStatement()
         } else {
             this.addError(
@@ -147,25 +172,28 @@ export class Parser {
     }
 
     /**
-     * return 语句
-     * 无论是否出错都会返回一个ReturnStatement
+     * Return语句
+     * 无论是否出错都会返回一个ReturnStatement。
      */
     parseReturnStatement(): ReturnStatement {
         let beginPos = this.scanner.getNextPos()
         let exp: Expression | null = null
 
-        // 跳过return
+        //跳过'return'
         this.scanner.next()
+        // console.log(this.scanner.peek().toString());
 
-        // 解析后面的表达式
+        //解析后面的表达式
         let t = this.scanner.peek()
         if (t.code != Seperator.SemiColon) {
+            //';'
             exp = this.parseExpression()
         }
 
-        // 跳过 ；
+        //跳过';'
         t = this.scanner.peek()
         if (t.code == Seperator.SemiColon) {
+            //';'
             this.scanner.next()
         } else {
             this.addError(
@@ -173,29 +201,31 @@ export class Parser {
                 this.scanner.getLastPos()
             )
         }
+
         return new ReturnStatement(beginPos, this.scanner.getLastPos(), exp)
     }
 
     /**
-     * 解析if语句
+     * 解析If语句
+     * ifStatement : 'if' '(' expression ')' statement ('else' statement)? ;
      */
     parseIfStatement(): IfStatement {
         let beginPos = this.scanner.getNextPos()
-
-        // 跳过if
+        //跳过if
         this.scanner.next()
         let isErrorNode = false
 
-        // 解析if条件
+        //解析if条件
         let condition: Expression
         if (this.scanner.peek().code == Seperator.OpenParen) {
-            // 跳过 (
+            //'('
+            //跳过'('
             this.scanner.next()
-
-            // 解析if条件
+            //解析if的条件
             condition = this.parseExpression()
             if (this.scanner.peek().code == Seperator.CloseParen) {
-                // 跳过 )
+                //')'
+                //跳过')'
                 this.scanner.next()
             } else {
                 this.addError(
@@ -214,13 +244,13 @@ export class Parser {
             condition = new ErrorExp(beginPos, this.scanner.getLastPos())
         }
 
-        // 解析then语句
+        //解析then语句
         let stmt = this.parseStatement()
 
-        // 解析else语句
+        //解析else语句
         let elseStmt: Statement | null = null
         if (this.scanner.peek().code == Keyword.Else) {
-            // 跳过else
+            //跳过'else'
             this.scanner.next()
             elseStmt = this.parseStatement()
         }
@@ -235,9 +265,13 @@ export class Parser {
         )
     }
 
+    /**
+     * 解析For语句
+     * forStatement : 'for' '(' expression? ';' expression? ';' expression? ')' statement ;
+     */
     parseForStatement(): ForStatement {
         let beginPos = this.scanner.getNextPos()
-        // 跳过for
+        //跳过'for'
         this.scanner.next()
 
         let isErrorNode = false
@@ -246,21 +280,23 @@ export class Parser {
         let increment: Expression | null = null
 
         if (this.scanner.peek().code == Seperator.OpenParen) {
-            // 跳过 (
+            //'('
+            //跳过'('
             this.scanner.next()
 
-            // init
+            //init
             if (this.scanner.peek().code != Seperator.SemiColon) {
+                //';'
                 if (this.scanner.peek().code == Keyword.Let) {
-                    // 跳过let
-                    this.scanner.next()
+                    this.scanner.next() //跳过'let'
                     init = this.parseVariableDecl()
                 } else {
                     init = this.parseExpression()
                 }
             }
-
             if (this.scanner.peek().code == Seperator.SemiColon) {
+                //';'
+                //跳过';'
                 this.scanner.next()
             } else {
                 this.addError(
@@ -268,20 +304,22 @@ export class Parser {
                     this.scanner.getLastPos()
                 )
                 this.skip()
-
-                // 跳过后面的 ;
+                //跳过后面的';'
                 if (this.scanner.peek().code == Seperator.SemiColon) {
-                    this.scanner.peek()
+                    //';'
+                    this.scanner.next()
                 }
                 isErrorNode = true
             }
 
-            // terminate
+            //terminate
             if (this.scanner.peek().code != Seperator.SemiColon) {
+                //';'
                 terminate = this.parseExpression()
             }
-
             if (this.scanner.peek().code == Seperator.SemiColon) {
+                //';'
+                //跳过';'
                 this.scanner.next()
             } else {
                 this.addError(
@@ -289,20 +327,22 @@ export class Parser {
                     this.scanner.getLastPos()
                 )
                 this.skip()
-
-                // 跳过后面的;
+                //跳过后面的';'
                 if (this.scanner.peek().code == Seperator.SemiColon) {
+                    //';'
                     this.scanner.next()
                 }
                 isErrorNode = true
             }
 
-            // increment
+            //increment
             if (this.scanner.peek().code != Seperator.CloseParen) {
+                //')'
                 increment = this.parseExpression()
             }
-
             if (this.scanner.peek().code == Seperator.CloseParen) {
+                //')'
+                //跳过')'
                 this.scanner.next()
             } else {
                 this.addError(
@@ -310,8 +350,9 @@ export class Parser {
                     this.scanner.getLastPos()
                 )
                 this.skip()
-
+                //跳过后面的')'
                 if (this.scanner.peek().code == Seperator.CloseParen) {
+                    //')'
                     this.scanner.next()
                 }
                 isErrorNode = true
@@ -325,7 +366,7 @@ export class Parser {
             isErrorNode = true
         }
 
-        // stmt
+        //stmt
         let stmt = this.parseStatement()
 
         return new ForStatement(
@@ -339,19 +380,22 @@ export class Parser {
         )
     }
 
+    /**
+     * 解析变量声明语句
+     * variableStatement : 'let' variableDecl ';';
+     */
     parseVariableStatement(): VariableStatement {
         let beginPos = this.scanner.getNextPos()
         let isErrorNode = false
-
-        // 跳过let
+        //跳过'let'
         this.scanner.next()
 
         let variableDecl = this.parseVariableDecl()
 
-        // 分号，结束变量声明
+        //分号，结束变量声明
         let t = this.scanner.peek()
         if (t.code == Seperator.SemiColon) {
-            // ;
+            //';'
             this.scanner.next()
         } else {
             this.skip()
@@ -367,23 +411,25 @@ export class Parser {
     }
 
     /**
-     * 解析变量
+     * 解析变量声明
+     * 语法规则：
+     * variableDecl : Identifier typeAnnotation？ ('=' sigleExpression)?;
      */
     parseVariableDecl(): VariableDecl {
         let beginPos = this.scanner.getNextPos()
-
         let t = this.scanner.next()
         if (t.kind == TokenKind.Identifier) {
             let varName: string = t.text
+
             let varType: string = 'any'
             let init: Expression | null = null
             let isErrorNode = false
 
             let t1 = this.scanner.peek()
-            // 类型标注
+            //可选的类型注解
             if (t1.code == Seperator.Colon) {
+                //':'
                 this.scanner.next()
-
                 t1 = this.scanner.peek()
                 if (t1.kind == TokenKind.Identifier) {
                     this.scanner.next()
@@ -393,14 +439,16 @@ export class Parser {
                         'Error parsing type annotation in VariableDecl',
                         this.scanner.getLastPos()
                     )
+                    //找到下一个等号
                     this.skip(['='])
                     isErrorNode = true
                 }
             }
 
-            // 可选初始化部分
+            //可选的初始化部分
             t1 = this.scanner.peek()
             if (t1.code == Op.Assign) {
+                //'='
                 this.scanner.next()
                 init = this.parseExpression()
             }
@@ -446,7 +494,7 @@ export class Parser {
             case 'null':
                 return SysTypes.Null
             case 'void':
-                return SysTypes.Void
+                return SysTypes.Undefined
             default:
                 this.addError(
                     'Unrecognized type: ' + typeName,
@@ -458,12 +506,20 @@ export class Parser {
 
     /**
      * 解析函数声明
+     * 语法规则：
+     * functionDecl: "function" Identifier callSignature  block ;
+     * callSignature: '(' parameterList? ')' typeAnnotation? ;
+     * parameterList : parameter (',' parameter)* ;
+     * parameter : Identifier typeAnnotation? ;
+     * block : '{' statementList? '}' ;
+     * 返回值：
+     * null-意味着解析过程出错。
      */
     parseFunctionDecl(): FunctionDecl {
         let beginPos = this.scanner.getNextPos()
         let isErrorNode = false
 
-        // 跳过关键字function
+        //跳过关键字'function'
         this.scanner.next()
 
         let t = this.scanner.next()
@@ -472,16 +528,15 @@ export class Parser {
                 'Expecting a function name, while we got a ' + t.text,
                 this.scanner.getLastPos()
             )
-
             this.skip()
             isErrorNode = true
         }
 
-        // 解析callSignature
+        //解析callSignature
         let callSignature: CallSignature
         let t1 = this.scanner.peek()
         if (t1.code == Seperator.OpenParen) {
-            // (
+            //'('
             callSignature = this.parseCallSignature()
         } else {
             this.addError(
@@ -498,11 +553,11 @@ export class Parser {
             )
         }
 
-        // 解析block
+        //解析block
         let functionBody: Block
         t1 = this.scanner.peek()
-        if ((t1.code = Seperator.OpenBrace)) {
-            // {
+        if (t1.code == Seperator.OpenBrace) {
+            //'{'
             functionBody = this.parseBlock()
         } else {
             this.addError(
@@ -517,6 +572,7 @@ export class Parser {
                 true
             )
         }
+
         return new FunctionDecl(
             beginPos,
             t.text,
@@ -527,29 +583,31 @@ export class Parser {
     }
 
     /**
-     * 解析函数前面
+     * 解析函数签名
+     * callSignature: '(' parameterList? ')' typeAnnotation? ;
      */
     parseCallSignature(): CallSignature {
         let beginPos = this.scanner.getNextPos()
-
-        // 跳过 （
+        //跳过'('
         let t = this.scanner.next()
 
         let paramList = null
         if (this.scanner.peek().code != Seperator.CloseParen) {
+            //')'
             paramList = this.parseParameterList()
         }
 
-        // 看看后面是不是 )
+        //看看后面是不是')'
         t = this.scanner.peek()
         if (t.code == Seperator.CloseParen) {
-            // 跳过 )
+            //')'
+            //跳过')'
             this.scanner.next()
 
-            // 解析typeAnnotation
+            //解析typeAnnotation
             let theType: string = 'any'
             if (this.scanner.peek().code == Seperator.Colon) {
-                // :
+                //':'
                 theType = this.parseTypeAnnotation()
             }
             return new CallSignature(
@@ -575,6 +633,7 @@ export class Parser {
 
     /**
      * 解析参数列表
+     * parameterList : parameter (',' parameter)* ;
      */
     parseParameterList(): ParameterList {
         let params: VariableDecl[] = []
@@ -582,11 +641,13 @@ export class Parser {
         let isErrorNode = false
         let t = this.scanner.peek()
         while (t.code != Seperator.CloseParen && t.kind != TokenKind.EOF) {
+            //')'
             if (t.kind == TokenKind.Identifier) {
                 this.scanner.next()
                 let t1 = this.scanner.peek()
                 let theType: string = 'any'
                 if (t1.code == Seperator.Colon) {
+                    //':'
                     theType = this.parseTypeAnnotation()
                 }
                 params.push(
@@ -599,11 +660,14 @@ export class Parser {
                     )
                 )
 
-                // 处理 ,
+                //处理','
                 t = this.scanner.peek()
                 if (t.code != Seperator.CloseParen) {
+                    //')'
                     if (t.code == Op.Comma) {
-                        this.scanner.next()
+                        //','
+                        this.scanner.next() //跳过','
+                        // console.log("meet a comma in parseParameterList");
                         t = this.scanner.peek()
                     } else {
                         this.addError(
@@ -612,10 +676,10 @@ export class Parser {
                         )
                         this.skip()
                         isErrorNode = true
-
                         let t2 = this.scanner.peek()
                         if (t2.code == Op.Comma) {
-                            this.scanner.next()
+                            //','
+                            this.scanner.next() //跳过','
                             t = this.scanner.peek()
                         } else {
                             break
@@ -630,13 +694,15 @@ export class Parser {
                 this.skip()
                 isErrorNode = true
                 if (t.code == Op.Comma) {
-                    this.scanner.next()
+                    //','
+                    this.scanner.next() //跳过','
                     t = this.scanner.peek()
                 } else {
                     break
                 }
             }
         }
+
         return new ParameterList(
             beginPos,
             this.scanner.getLastPos(),
@@ -646,13 +712,13 @@ export class Parser {
     }
 
     /**
-     * 解析类型注解
-     * 无论是否出错，都返回一个类型，缺省就是 any
+     * 解析类型注解。
+     * 无论是否出错，都会返回一个类型。缺省类型是'any'。
      */
     parseTypeAnnotation(): string {
         let theType = 'any'
 
-        // 跳过 ：
+        //跳过:
         this.scanner.next()
 
         let t = this.scanner.peek()
@@ -665,19 +731,24 @@ export class Parser {
                 this.scanner.getLastPos()
             )
         }
+
         return theType
     }
 
+    /**
+     * 解析函数体
+     * 语法规则：
+     * block : '{' statementList? '}' ;
+     */
     parseBlock(): Block {
         let beginPos = this.scanner.getNextPos()
         let t: Token = this.scanner.peek()
-
-        // 跳过{
+        //跳过'{'
         this.scanner.next()
-
         let stmts = this.parseStatementList()
         t = this.scanner.peek()
         if (t.code == Seperator.CloseBrace) {
+            //'}'
             this.scanner.next()
             return new Block(beginPos, this.scanner.getLastPos(), stmts)
         } else {
@@ -698,6 +769,7 @@ export class Parser {
         let t = this.scanner.peek()
         let stmt = new ExpressionStatement(this.scanner.getLastPos(), exp)
         if (t.code == Seperator.SemiColon) {
+            //';'
             this.scanner.next()
         } else {
             this.addError(
@@ -719,6 +791,9 @@ export class Parser {
         return this.parseAssignment()
     }
 
+    /**
+     * 二元运算符的优先级。
+     */
     private opPrec: Map<Op, number> = new Map([
         [Op.Assign, 2],
         [Op.PlusAssign, 2],
@@ -765,34 +840,33 @@ export class Parser {
     }
 
     /**
-     * 解析赋值表达式
-     * 注意：赋值表达式是右结合的
+     * 解析赋值表达式。
+     * 注意：赋值表达式是右结合的。
      */
     parseAssignment(): Expression {
         let assignPrec = this.getPrec(Op.Assign)
-        // 先解析一个优先级更高的表达式
+        //先解析一个优先级更高的表达式
         let exp1 = this.parseBinary(assignPrec)
         let t = this.scanner.peek()
         let tprec = this.getPrec(t.code as Op)
-
-        // 存放赋值运算符两边的表达式
+        //存放赋值运算符两边的表达式
         let expStack: Expression[] = []
         expStack.push(exp1)
-
-        // 存放赋值运算符
+        //存放赋值运算符
         let opStack: Op[] = []
 
+        //解析赋值表达式
         while (t.kind == TokenKind.Operator && tprec == assignPrec) {
             opStack.push(t.code as Op)
-            this.scanner.next() // 跳过运算符
-            // 获取运算符优先级高于assignment的二元表达式
+            this.scanner.next() //跳过运算符
+            //获取运算符优先级高于assignment的二元表达式
             exp1 = this.parseBinary(assignPrec)
             expStack.push(exp1)
             t = this.scanner.peek()
             tprec = this.getPrec(t.code as Op)
         }
 
-        // 组装成右结合的AST
+        //组装成右结合的AST
         exp1 = expStack[expStack.length - 1]
         if (opStack.length > 0) {
             for (let i: number = expStack.length - 2; i >= 0; i--) {
@@ -803,11 +877,13 @@ export class Parser {
     }
 
     /**
-     * 采用运算符优先级算法，解析二元表达式
-     * 这是一个递归的算法，一开始，提供的参数是最低的优先级
+     * 采用运算符优先级算法，解析二元表达式。
+     * 这是一个递归算法。一开始，提供的参数是最低优先级，
+     *
+     * @param prec 当前运算符的优先级
      */
     parseBinary(prec: number): Expression {
-        // console.log("parseBinary: " + prec);
+        // console.log("parseBinary : " + prec);
         let exp1 = this.parseUnary()
         let t = this.scanner.peek()
         let tprec = this.getPrec(t.code as Op)
@@ -824,11 +900,12 @@ export class Parser {
          * 在递归中，新的运算符的优先级要小，所以只返回一个5，跟前一个节点形成3*5,成为新的左子节点。
          * 接着做第二次循环，遇到+号，返回5，并作为右子节点，跟3*5一起组成一个新的binary返回。
          */
+
         while (t.kind == TokenKind.Operator && tprec > prec) {
-            this.scanner.next()
+            this.scanner.next() //跳过运算符
             let exp2 = this.parseBinary(tprec)
             let exp: Binary = new Binary(t.code as Op, exp1, exp2)
-            exp1 = exp2
+            exp1 = exp
             t = this.scanner.peek()
             tprec = this.getPrec(t.code as Op)
         }
@@ -836,15 +913,16 @@ export class Parser {
     }
 
     /**
-     * 解析一元表达式
+     * 解析一元运算
+     * unary: primary | prefixOp unary | primary postfixOp ;
      */
     parseUnary(): Expression {
         let beginPos = this.scanner.getNextPos()
         let t = this.scanner.peek()
 
-        // 前缀的一元表达式
+        //前缀的一元表达式
         if (t.kind == TokenKind.Operator) {
-            this.scanner.next()
+            this.scanner.next() //跳过运算符
             let exp = this.parseUnary()
             return new Unary(
                 beginPos,
@@ -853,15 +931,17 @@ export class Parser {
                 exp,
                 true
             )
-        } else {
-            // 解析一个primary
+        }
+        //后缀只能是++或--
+        else {
+            //首先解析一个primary
             let exp = this.parsePrimary()
             let t1 = this.scanner.peek()
             if (
                 t1.kind == TokenKind.Operator &&
                 (t1.code == Op.Inc || t1.code == Op.Dec)
             ) {
-                this.scanner.next()
+                this.scanner.next() //跳过运算符
                 return new Unary(
                     beginPos,
                     this.scanner.getLastPos(),
@@ -876,17 +956,18 @@ export class Parser {
     }
 
     /**
-     * 解析基础表达式
+     * 解析基础表达式。
      */
     parsePrimary(): Expression {
         let beginPos = this.scanner.getNextPos()
-
         let t = this.scanner.peek()
+        // console.log("parsePrimary: " + t.text);
 
-        // 以Identifier开头，可能是函数调用，也可能是一个变量，所以要再多向后看一个token
-        // 这相当于在局部使用了LL2算法
+        //知识点：以Identifier开头，可能是函数调用，也可能是一个变量，所以要再多向后看一个Token，
+        //这相当于在局部使用了LL(2)算法。
         if (t.kind == TokenKind.Identifier) {
             if (this.scanner.peek2().code == Seperator.OpenParen) {
+                //'('
                 return this.parseFunctionCall()
             } else {
                 this.scanner.next()
@@ -902,10 +983,12 @@ export class Parser {
             this.scanner.next()
             return new StringLiteral(beginPos, t.text)
         } else if (t.code == Seperator.OpenParen) {
+            //'('
             this.scanner.next()
             let exp = this.parseExpression()
             let t1 = this.scanner.peek()
             if (t1.code == Seperator.CloseParen) {
+                //')'
                 this.scanner.next()
             } else {
                 this.addError(
@@ -913,10 +996,11 @@ export class Parser {
                         t.text,
                     this.scanner.getLastPos()
                 )
+                this.skip()
             }
             return exp
         } else {
-            // 理论上永远不会执行这里
+            //理论上永远不会到达这里
             this.addError(
                 'Can not recognize a primary expression starting with: ' +
                     t.text,
@@ -929,15 +1013,19 @@ export class Parser {
 
     /**
      * 解析函数调用
+     * 语法规则：
+     * functionCall : Identifier '(' parameterList? ')' ;
+     * parameterList : StringLiteral (',' StringLiteral)* ;
      */
     parseFunctionCall(): FunctionCall {
         let beginPos = this.scanner.getNextPos()
         let params: Expression[] = []
         let name = this.scanner.next().text
 
+        //跳过'('
         this.scanner.next()
 
-        // 循环，读出所有参数
+        //循环，读出所有参数
         let t1 = this.scanner.peek()
         while (t1.code != Seperator.CloseParen && t1.kind != TokenKind.EOF) {
             let exp = this.parseExpression()
@@ -952,7 +1040,9 @@ export class Parser {
 
             t1 = this.scanner.peek()
             if (t1.code != Seperator.CloseParen) {
+                //')'
                 if (t1.code == Op.Comma) {
+                    //','
                     t1 = this.scanner.next()
                 } else {
                     this.addError(
@@ -971,7 +1061,9 @@ export class Parser {
                 }
             }
         }
+
         if (t1.code == Seperator.CloseParen) {
+            //消化掉')'
             this.scanner.next()
         }
 
@@ -983,7 +1075,12 @@ export class Parser {
         )
     }
 
+    /**
+     * 跳过一些Token，用于错误恢复，以便继续解析后面Token
+     * @param seperators
+     */
     private skip(seperators: string[] = []) {
+        // console.log("in skip()");
         let t = this.scanner.peek()
         while (t.kind != TokenKind.EOF) {
             if (t.kind == TokenKind.Keyword) {

@@ -26,7 +26,7 @@ import {
     ForStatement,
     Unary,
 } from './ast'
-import { CompileError } from './error'
+import { CompilerError } from './error'
 import { Op, Operators } from './scanner'
 import { Scope } from './scope'
 import { built_ins, FunctionSymbol, SymKind, VarSymbol } from './symbol'
@@ -41,8 +41,8 @@ export class SemanticAnalyer {
         new LeftValueAttributor(),
     ]
 
-    errors: CompileError[] = []
-    warnings: CompileError[] = []
+    errors: CompilerError[] = []
+    warnings: CompilerError[] = []
 
     execute(prog: Prog): void {
         this.errors = []
@@ -55,7 +55,7 @@ export class SemanticAnalyer {
     }
 }
 
-export class SemanticError extends CompileError {
+export class SemanticError extends CompilerError {
     node: AstNode
 
     constructor(msg: string, node: AstNode, isWarning = false) {
@@ -65,8 +65,8 @@ export class SemanticError extends CompileError {
 }
 
 abstract class SemanticAstVisitor extends AstVisitor {
-    errors: CompileError[] = []
-    warnings: CompileError[] = []
+    errors: CompilerError[] = []
+    warnings: CompilerError[] = []
 
     addError(msg: string, node: AstNode) {
         this.errors.push(new SemanticError(msg, node))

@@ -1,6 +1,6 @@
 import { Position } from './scanner'
 
-export class CompileError {
+export class CompilerError {
     msg: string
     isWarning: boolean
     beginPos: Position

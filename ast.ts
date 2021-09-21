@@ -1,18 +1,17 @@
+import { Symbol, FunctionSymbol, VarSymbol, built_ins } from './symbol'
+import { Position, Op } from './scanner'
+import { Scope } from './scope'
+import { Type, SysTypes } from './types'
+
 ////////////////////////////////////////////////////////////////////////////////
 //Parser
-
-import { Scope } from './scope'
-import { FunctionSymbol, VarSymbol, built_ins } from './symbol'
-import { SysTypes, Type } from './types'
-import { Op, Position } from './scanner'
-
 /**
  * AST基类
  */
 export abstract class AstNode {
-    beginPos: Position
-    endPos: Position
-    isErrorNode: boolean
+    beginPos: Position //在源代码中的第一个Token的位置
+    endPos: Position //在源代码中的最后一个Token的位置
+    isErrorNode: boolean // = false;
 
     constructor(beginPos: Position, endPos: Position, isErrorNode: boolean) {
         this.beginPos = beginPos
@@ -32,11 +31,10 @@ export abstract class Statement extends AstNode {}
 
 /**
  * 声明
- * 所有声明都会对应一个符号
+ * 所有声明都会对应一个符号。
  */
 export abstract class Decl extends AstNode {
     name: string
-
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -48,18 +46,17 @@ export abstract class Decl extends AstNode {
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////////
-// 语句
+/////////////////////////////////////////////////////////////
+//语句
 
 /**
  * 函数声明节点
  */
 export class FunctionDecl extends Decl {
-    body: Block //函数体
     callSignature: CallSignature
-    scope: Scope | null = null
+    body: Block //函数体
+    scope: Scope | null = null //该函数对应的Scope
     sym: FunctionSymbol | null = null
-
     constructor(
         beginPos: Position,
         name: string,
@@ -71,20 +68,18 @@ export class FunctionDecl extends Decl {
         this.callSignature = callSignature
         this.body = body
     }
-
-    public accept(visitor: AstVisitor): any {
-        return visitor.visitFunctionDecl(this)
+    public accept(visitor: AstVisitor, additional: any): any {
+        return visitor.visitFunctionDecl(this, additional)
     }
 }
 
 /**
  * 调用签名
- * 可以用在函数声明等多个地方
+ * 可以用在函数声明等多个地方。
  */
 export class CallSignature extends AstNode {
     paramList: ParameterList | null
-    theType: Type
-
+    theType: Type //返回值类型
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -96,15 +91,13 @@ export class CallSignature extends AstNode {
         this.paramList = paramList
         this.theType = theType
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitCallSignature(this, additional)
     }
 }
 
 export class ParameterList extends AstNode {
     params: VariableDecl[]
-
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -114,8 +107,7 @@ export class ParameterList extends AstNode {
         super(beginPos, endPos, isErrorNode)
         this.params = params
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitParameterList(this, additional)
     }
 }
@@ -123,20 +115,18 @@ export class ParameterList extends AstNode {
 /**
  * 函数体
  */
-export class Block extends AstNode {
+export class Block extends Statement {
     stmts: Statement[]
     scope: Scope | null = null
-
     constructor(
         beginPos: Position,
-        endPosition: Position,
+        endPos: Position,
         stmts: Statement[],
         isErrorNode: boolean = false
     ) {
-        super(beginPos, endPosition, isErrorNode)
+        super(beginPos, endPos, isErrorNode)
         this.stmts = stmts
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitBlock(this, additional)
     }
@@ -144,17 +134,16 @@ export class Block extends AstNode {
 
 /**
  * 程序
- * 程序节点，也是AST的根节点
- * 程序可以看做是一个隐性的函数，运行程序时也是可以带参数的
+ * 是AST的根节点
+ * 程序可以看做是一个隐性的函数。运行程序时也是可以带参数的。
  */
 export class Prog extends Block {
+    // stmts:Statement[];
     sym: FunctionSymbol | null = null
-
     constructor(beginPos: Position, endPos: Position, stmts: Statement[]) {
         super(beginPos, endPos, stmts, false)
         this.stmts = stmts
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitProg(this, additional)
     }
@@ -165,7 +154,6 @@ export class Prog extends Block {
  */
 export class VariableStatement extends Statement {
     variableDecl: VariableDecl
-
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -175,8 +163,7 @@ export class VariableStatement extends Statement {
         super(beginPos, endPos, isErrorNode)
         this.variableDecl = variableDecl
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitVariableStatement(this, additional)
     }
 }
@@ -188,7 +175,7 @@ export class VariableDecl extends Decl {
     theType: Type //变量类型
     init: Expression | null //变量初始化所使用的表达式
     sym: VarSymbol | null = null
-    inferredType: Type | null = null // 推测出的类型
+    inferredType: Type | null = null //推测出的类型
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -201,7 +188,6 @@ export class VariableDecl extends Decl {
         this.theType = theType
         this.init = init
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitVariableDecl(this, additional)
     }
@@ -209,7 +195,7 @@ export class VariableDecl extends Decl {
 
 /**
  * 表达式语句
- * 就是表达式后面加一个分号
+ * 就是在表达式后面加个分号
  */
 export class ExpressionStatement extends Statement {
     exp: Expression
@@ -221,18 +207,16 @@ export class ExpressionStatement extends Statement {
         super(exp.beginPos, endPos, isErrorNode)
         this.exp = exp
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitExpressionStatement(this, additional)
     }
 }
 
 /**
- * return语句
+ * Return语句
  */
 export class ReturnStatement extends Statement {
     exp: Expression | null = null
-
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -242,8 +226,7 @@ export class ReturnStatement extends Statement {
         super(beginPos, endPos, isErrorNode)
         this.exp = exp
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitReturnStatement(this, additional)
     }
 }
@@ -270,19 +253,20 @@ export class IfStatement extends Statement {
         this.elseStmt = elseStmt
     }
 
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitIfStatement(this, additional)
     }
 }
 
 /**
- * for语句
+ * For语句
  */
 export class ForStatement extends Statement {
     init: Expression | VariableDecl | null = null
     condition: Expression | null = null
     increment: Expression | null = null
     stmt: Statement
+
     scope: Scope | null = null
 
     constructor(
@@ -295,37 +279,32 @@ export class ForStatement extends Statement {
         isErrorNode: boolean = false
     ) {
         super(beginPos, endPos, isErrorNode)
-
         this.init = init
         this.condition = termination
         this.increment = increment
         this.stmt = stmt
     }
 
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitForStatement(this, additional)
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////////////
-// 表达式
+/////////////////////////////////////////////////////////////
+//表达式
 
 /**
  * 表达式
  */
 export abstract class Expression extends AstNode {
     theType: Type | null = null
-    // 当前位置需要一个左值，赋值符号，点符号的左边，需要左值
-    shouldBeLeftValue: boolean = false
+    shouldBeLeftValue: boolean = false //当前位置需要一个左值。赋值符号、点符号的左边，需要左值。
+    isLeftValue: boolean = false //是否是一个左值
+    constValue: any = undefined //本表达式的常量值。在常量折叠、流程分析等时候有用。
 
-    // 是否是一个左值
-    isLeftValue: boolean = false
+    //推断出来的类型。
+    //这个类型一般是theType的子类型。比如，theType是any，但inferredType是number.
 
-    // 本表达式的常量值，在常量折叠、流程分析的时候用到
-    constValue: any = undefined
-
-    // 推断出来的类型
-    // 这个类型一般是theType的子类型，比如，theType是any，但是inferredType是number
     inferredType: Type | null = null
 }
 
@@ -347,17 +326,15 @@ export class Binary extends Expression {
         this.exp1 = exp1
         this.exp2 = exp2
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitBinary(this, additional)
     }
 }
 
 export class Unary extends Expression {
-    op: Op
-    exp: Expression
-    isPrefix: boolean
-
+    op: Op //运算符
+    exp: Expression //表达式
+    isPrefix: boolean //前缀还是后缀
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -371,8 +348,7 @@ export class Unary extends Expression {
         this.exp = exp
         this.isPrefix = isPrefix
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitUnary(this, additional)
     }
 }
@@ -383,8 +359,8 @@ export class Unary extends Expression {
 export class FunctionCall extends Expression {
     name: string
     arguments: Expression[]
+    // decl: FunctionDecl|null=null;  //指向函数的声明
     sym: FunctionSymbol | null = null
-
     constructor(
         beginPos: Position,
         endPos: Position,
@@ -396,7 +372,6 @@ export class FunctionCall extends Expression {
         this.name = name
         this.arguments = paramValues
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitFunctionCall(this, additional)
     }
@@ -417,7 +392,6 @@ export class Variable extends Expression {
         super(beginPos, endPos, isErrorNode)
         this.name = name
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitVariable(this, additional)
     }
@@ -428,14 +402,12 @@ export class Variable extends Expression {
  */
 export class StringLiteral extends Expression {
     value: string
-
     constructor(pos: Position, value: string, isErrorNode: boolean = false) {
         super(pos, pos, isErrorNode)
         this.value = value
         this.theType = SysTypes.String
         this.constValue = value
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitStringLiteral(this, additional)
     }
@@ -446,14 +418,12 @@ export class StringLiteral extends Expression {
  */
 export class IntegerLiteral extends Expression {
     value: number
-
     constructor(pos: Position, value: number, isErrorNode: boolean = false) {
         super(pos, pos, isErrorNode)
         this.value = value
         this.theType = SysTypes.Integer
         this.constValue = value
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitIntegerLiteral(this, additional)
     }
@@ -464,14 +434,12 @@ export class IntegerLiteral extends Expression {
  */
 export class DecimalLiteral extends Expression {
     value: number
-
     constructor(pos: Position, value: number, isErrorNode: boolean = false) {
         super(pos, pos, isErrorNode)
         this.value = value
         this.theType = SysTypes.Decimal
         this.constValue = value
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitDecimalLiteral(this, additional)
     }
@@ -482,13 +450,11 @@ export class DecimalLiteral extends Expression {
  */
 export class NullLiteral extends Expression {
     value: null = null
-
     constructor(pos: Position, isErrorNode: boolean = false) {
         super(pos, pos, isErrorNode)
         this.theType = SysTypes.Null
         this.constValue = this.value
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitNullLiteral(this, additional)
     }
@@ -499,49 +465,39 @@ export class NullLiteral extends Expression {
  */
 export class BooleanLiteral extends Expression {
     value: boolean
-
-    constructor(
-        pos: Position,
-
-        value: boolean,
-        isErrorNode: boolean = false
-    ) {
+    constructor(pos: Position, value: boolean, isErrorNode: boolean = false) {
         super(pos, pos, isErrorNode)
         this.value = value
         this.theType = SysTypes.Boolean
         this.constValue = value
     }
-
     public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitBooleanLiteral(this, additional)
     }
 }
 
 /**
- * 代表一个错误的表达式
+ * 代表了一个错误的表达式。
  */
 export class ErrorExp extends Expression {
     constructor(beginPos: Position, endPos: Position) {
         super(beginPos, endPos, true)
         this.isErrorNode = true
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitErrorExp(this, additional)
     }
 }
 
 /**
- * 代表一个错误的语句
- *
+ * 代表了一个错误的语句。
  */
 export class ErrorStmt extends Statement {
     constructor(beginPos: Position, endPos: Position) {
         super(beginPos, endPos, true)
         this.isErrorNode = true
     }
-
-    accept(visitor: AstVisitor, additional: any): any {
+    public accept(visitor: AstVisitor, additional: any): any {
         return visitor.visitErrorStmt(this, additional)
     }
 }
@@ -561,7 +517,7 @@ export abstract class AstVisitor {
     }
 
     visitProg(prog: Prog, additional: any = undefined): any {
-        // 缺省是调用visitBlock的行为
+        //缺省是调用visitBlock的行为
         return this.visitBlock(prog, additional)
     }
 
@@ -586,15 +542,15 @@ export abstract class AstVisitor {
         additional: any = undefined
     ): any {
         this.visit(functionDecl.callSignature, additional)
-        return this.visitBlock(functionDecl.body, additional)
+        return this.visit(functionDecl.body, additional)
     }
 
     visitCallSignature(
-        callSignature: CallSignature,
+        callSinature: CallSignature,
         additional: any = undefined
     ): any {
-        if (callSignature.paramList != null) {
-            return this.visit(callSignature.paramList, additional)
+        if (callSinature.paramList != null) {
+            return this.visit(callSinature.paramList, additional)
         }
     }
 
@@ -609,6 +565,10 @@ export abstract class AstVisitor {
         return retVal
     }
 
+    // visitParameter(parameter: Parameter):any{
+    //     return undefined;
+    // }
+
     visitBlock(block: Block, additional: any = undefined): any {
         let retVal: any
         for (let x of block.stmts) {
@@ -621,7 +581,7 @@ export abstract class AstVisitor {
         stmt: ExpressionStatement,
         additional: any = undefined
     ): any {
-        return this.visit(stmt.exp)
+        return this.visit(stmt.exp, additional)
     }
 
     visitReturnStatement(
@@ -655,8 +615,8 @@ export abstract class AstVisitor {
     }
 
     visitBinary(exp: Binary, additional: any = undefined): any {
-        this.visit(exp.exp1)
-        this.visit(exp.exp2)
+        this.visit(exp.exp1, additional)
+        this.visit(exp.exp2, additional)
     }
 
     visitUnary(exp: Unary, additional: any = undefined): any {
@@ -691,26 +651,31 @@ export abstract class AstVisitor {
         functionCall: FunctionCall,
         additional: any = undefined
     ): any {
+        // console.log("in AstVisitor.visitFunctionCall "+ functionCall.name);
         for (let param of functionCall.arguments) {
+            // console.log("in AstVisitor.visitFunctionCall, visiting param: "+ param.dump(""));
             this.visit(param, additional)
         }
         return undefined
     }
 
-    visitErrorExp(errNode: ErrorExp, additional: any = undefined): any {
+    visitErrorExp(errorNode: ErrorExp, additional: any = undefined): any {
         return undefined
     }
 
-    visitErrorStmt(errStmt: ErrorStmt, additional: any = undefined): any {
+    visitErrorStmt(errorStmt: ErrorStmt, additional: any = undefined): any {
         return undefined
     }
 }
 
+/**
+ * 打印AST的调试信息
+ */
 export class AstDumper extends AstVisitor {
     visitProg(prog: Prog, prefix: any): any {
-        console.log(prefix + 'Prog' + (prog.isErrorNode ? '**E**' : ''))
+        console.log(prefix + 'Prog' + (prog.isErrorNode ? ' **E** ' : ''))
         for (let x of prog.stmts) {
-            this.visit(x, prefix + '\t')
+            this.visit(x, prefix + '    ')
         }
     }
 
@@ -774,6 +739,10 @@ export class AstDumper extends AstVisitor {
             this.visit(x, prefix + '    ')
         }
     }
+
+    // visitParameter(parameter: Parameter):any{
+    //     return undefined;
+    // }
 
     visitBlock(block: Block, prefix: any): any {
         if (block.isErrorNode) {
