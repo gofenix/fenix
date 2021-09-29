@@ -22,6 +22,7 @@ import {
     SymbolDumper,
     VarSymbol,
 } from './symbol'
+import { FunctionType, SimpleType, SysTypes, Type, UnionType } from './types'
 
 enum OpCode {
     iconst_0 = 0x03,
@@ -423,6 +424,7 @@ export class BCGenerator extends AstVisitor {
                     return code
             }
         }
+        return code
     }
 
     /**
@@ -491,7 +493,91 @@ export class BCGenerator extends AstVisitor {
         return code
     }
 
-    visitBinary(bi: Binary): any {}
+    visitBinary(bi: Binary): any {
+        this.inExpression = true
+
+        let code: number[]
+        let code1 = this.visit(bi.exp1)
+        let code2 = this.visit(bi.exp2)
+
+        let address1: number = 0
+        let address2: number = 0
+        let tempCode: number = 0
+
+        // 1. 处理赋值
+        if (bi.op == Op.Assign) {
+            let varSymbol = code1 as VarSymbol
+            console.log('varSymbol: ')
+            console.log(varSymbol)
+
+            // 加入右子树的代码
+            code = code2
+            // 加入istore代码
+            code = code.concat(this.setVariableValue(varSymbol))
+        } else {
+            // 处理其他二元运算符
+            // 加入左子树的代码
+            code = code1
+            // 加入右子树
+            code = code.concat(code2)
+
+            // 加入运算符代码
+            switch (bi.op) {
+                case Op.Plus:
+                    if (bi.theType == SysTypes.String) {
+                        code.push(OpCode.sadd)
+                    } else {
+                        code.push(OpCode.iadd)
+                    }
+                    break
+                case Op.Minus:
+                    code.push(OpCode.isub)
+                    break
+                case Op.Multiply:
+                    code.push(OpCode.imul)
+                    break
+                case Op.Divide:
+                    code.push(OpCode.idiv)
+                    break
+                case Op.G:
+                case Op.GE:
+                case Op.L:
+                case Op.LE:
+                case Op.EQ:
+                case Op.NE:
+                    if (bi.op == Op.G) {
+                        tempCode = OpCode.if_icmple
+                    } else if (bi.op == Op.GE) {
+                        tempCode = OpCode.if_icmplt
+                    } else if (bi.op == Op.L) {
+                        tempCode = OpCode.if_icmpge
+                    } else if (bi.op == Op.LE) {
+                        tempCode = OpCode.if_icmpgt
+                    } else if (bi.op == Op.EQ) {
+                        tempCode = OpCode.if_icmpne
+                    } else if (bi.op == Op.NE) {
+                        tempCode = OpCode.if_icmpeq
+                    }
+
+                    address1 = code.length + 7
+                    address2 = address2 + 1
+                    code.push(tempCode)
+                    code.push(address1 >> 8)
+                    code.push(address1)
+                    code.push(OpCode.iconst_1)
+                    code.push(OpCode.goto)
+                    code.push(address2 >> 8)
+                    code.push(address2)
+                    code.push(OpCode.iconst_0)
+                    break
+                default:
+                    console.log('unsupported binary operation: ' + bi.op)
+                    return []
+            }
+        }
+
+        return code
+    }
 
     visitUnary(u: Unary): any {
         let code: number[] = []
@@ -696,9 +782,50 @@ class StackFrame {
 /**
  * 从BCModule生成字节码
  */
-export class BCModuleWriter {}
+export class BCModuleWriter {
+    private types: Type[] = [] // 保存该模块所涉及的类型
+
+    write(bcModule: BCModule): number[] {}
+
+    private writeVarSymbol(sym: VarSymbol): number[] {}
+
+    writeFunctionSymbol(sym: FunctionSymbol): number[] {}
+
+    writeSimpleType(t: SimpleType): number[] {}
+
+    writeFunctionType(t: FunctionType): number[] {}
+
+    writeUnionType(t: UnionType): number[] {}
+
+    private writeString(bc: number[], str: string) {}
+}
 
 /**
  * 从字节码生成BCModule
  */
-export class BCModuleReader {}
+export class BCModuleReader {
+    // 读取字节码的下标
+    private index: number = 0
+
+    // 解析出来的所有类型
+    private types: Map<string, Type> = new Map()
+    private typeInfos: Map<string, any> = new Map()
+
+    read(bc: number[]): BCModule {}
+
+    private readString(bc: number[]): string {}
+
+    private readSimpleType(bc: number[]) {}
+
+    private readFunctionType(bc: number[]) {}
+
+    private readUnionType(bc: number[]) {}
+
+    private addSystemTypes() {}
+
+    private buildTypes() {}
+
+    private readFunctionSymbol(bc: number[]): FunctionSymbol {}
+
+    private readVarSymbol(bc: number[]): VarSymbol {}
+}
