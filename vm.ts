@@ -1,3 +1,4 @@
+import { lutimes } from 'fs'
 import { formatWithOptions } from 'util'
 import {
     AstVisitor,
@@ -752,7 +753,298 @@ export class VM {
                     opCode = code[++codeIndex]
                     continue
                 case OpCode.iconst_1:
+                    frame.oprandStack.push(1)
+                    opCode = code[++codeIndex]
                     continue
+                case OpCode.iconst_2:
+                    frame.oprandStack.push(2)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iconst_3:
+                    frame.oprandStack.push(3)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iconst_4:
+                    frame.oprandStack.push(4)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iconst_5:
+                    frame.oprandStack.push(5)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.bipush: //取出1个字节
+                    frame.oprandStack.push(code[++codeIndex])
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.sipush: //取出2个字节
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    frame.oprandStack.push((byte1 << 8) | byte2)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.ldc: //从常量池加载
+                    constIndex = code[++codeIndex]
+                    numValue = bcModule.consts[constIndex]
+                    frame.oprandStack.push(numValue)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.sldc: //从常量池加载字符串
+                    constIndex = code[++codeIndex]
+                    strValue = bcModule.consts[constIndex]
+                    frame.oprandStack.push(strValue)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iload:
+                    frame.oprandStack.push(frame.localVars[code[++codeIndex]])
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iload_0:
+                    frame.oprandStack.push(frame.localVars[0])
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iload_1:
+                    frame.oprandStack.push(frame.localVars[1])
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iload_2:
+                    frame.oprandStack.push(frame.localVars[2])
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iload_3:
+                    frame.oprandStack.push(frame.localVars[3])
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.istore:
+                    frame.localVars[code[++codeIndex]] = frame.oprandStack.pop()
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.istore_0:
+                    frame.localVars[0] = frame.oprandStack.pop()
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.istore_1:
+                    frame.localVars[1] = frame.oprandStack.pop()
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.istore_2:
+                    frame.localVars[2] = frame.oprandStack.pop()
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.istore_3:
+                    frame.localVars[3] = frame.oprandStack.pop()
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iadd:
+                case OpCode.sadd:
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    frame.oprandStack.push(vleft + vright)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.isub:
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    frame.oprandStack.push(vleft - vright)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.imul:
+                    frame.oprandStack.push(
+                        frame.oprandStack.pop() * frame.oprandStack.pop()
+                    )
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.idiv:
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    frame.oprandStack.push(vleft / vright)
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.iinc:
+                    let varIndex = code[++codeIndex]
+                    let offset = code[++codeIndex]
+                    frame.localVars[varIndex] =
+                        frame.localVars[varIndex] + offset
+                    opCode = code[++codeIndex]
+                    continue
+                case OpCode.ireturn:
+                case OpCode.return:
+                    // 确定返回值
+                    let retValue = undefined
+                    if (opCode == OpCode.ireturn) {
+                        retValue = frame.oprandStack.pop()
+                    }
+
+                    // 弹出栈帧，返回上一级函数，继续执行
+                    this.callStack.pop()
+                    if (this.callStack.length == 0) {
+                        // 主程序返回，结束运行
+                        return 0
+                    } else {
+                        // 返回上一级的调用者
+                        frame = this.callStack[this.callStack.length - 1]
+                        // 设置返回值到上一级栈帧
+                        if (opCode == OpCode.ireturn) {
+                            frame.oprandStack.push(retValue)
+                        }
+
+                        // 设置新的code， codeIndex和opCode
+                        if (frame.functionSym.byteCode != null) {
+                            // 切换到调用者代码
+                            code = frame.functionSym.byteCode
+                            // 设置指令指针为返回地址，也就是调用该函数的下一条指令
+                            codeIndex = frame.returnIndex
+                            opCode = code[codeIndex]
+                            continue
+                        } else {
+                            console.log(
+                                'can not find code for ' +
+                                    frame.functionSym.name
+                            )
+                            return -1
+                        }
+                    }
+                    continue
+                case OpCode.invokestatic:
+                    // 从常量池找到被调用的函数
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    let functionSym = bcModule.consts[
+                        (byte1 << 8) | byte2
+                    ] as FunctionSymbol
+
+                    // 对于内置函数特殊处理
+                    if (functionSym.name == 'println') {
+                        // 取出一个参数
+                        let param = frame.oprandStack.pop()
+                        opCode = code[++codeIndex]
+                        console.log(param) // 打印显示
+                    } else if (functionSym.name == 'tick') {
+                        opCode = code[++codeIndex]
+                        let date = new Date()
+                        let value = Date.UTC(
+                            date.getFullYear(),
+                            date.getMonth(),
+                            date.getDate(),
+                            date.getHours(),
+                            date.getMinutes(),
+                            date.getSeconds(),
+                            date.getMilliseconds()
+                        )
+                        frame.oprandStack.push(value)
+                    } else if (functionSym.name == 'integer_to_string') {
+                        opCode = code[++codeIndex]
+                        numValue = frame.oprandStack.pop()
+                        frame.oprandStack.push(numValue.toString())
+                    } else {
+                        // 设置返回值地址，为函数调用的下一条指令
+                        frame.returnIndex = codeIndex + 1
+
+                        // 创建新的栈帧
+                        let lastFrame = frame
+                        frame = new StackFrame(functionSym)
+                        this.callStack.push(frame)
+
+                        // 传递参数
+                        let paramCount = (functionSym.theType as FunctionType)
+                            .paramTypes.length
+                        for (let i = paramCount - 1; i > 0; i--) {
+                            frame.localVars[i] = lastFrame.oprandStack.pop()
+                        }
+
+                        // 设置新的code，codeIndex和opCode
+                        if (frame.functionSym.byteCode != null) {
+                            // 切换到被调用函数的代码
+                            code = frame.functionSym.byteCode
+                            // 代码指针归零
+                            codeIndex = 0
+                            opCode = code[codeIndex]
+                            continue
+                        } else {
+                            console.log(
+                                "can't find code for: " + frame.functionSym.name
+                            )
+                            return -1
+                        }
+                    }
+                    continue
+                case OpCode.ifeq:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    if (frame.oprandStack.pop() == 0) {
+                        codeIndex = (byte1 << 8) | byte2
+                        opCode = code[codeIndex]
+                    } else {
+                        opCode = code[++codeIndex]
+                    }
+                    continue
+                case OpCode.ifne:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    if (frame.oprandStack.pop() != 0) {
+                        codeIndex = (byte1 << 8) | byte2
+                        opCode = code[codeIndex]
+                    } else {
+                        opCode = code[++codeIndex]
+                    }
+                    continue
+                case OpCode.if_icmplt:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    if (vleft < vright) {
+                        codeIndex = (byte1 << 8) | byte2
+                        opCode = code[codeIndex]
+                    } else {
+                        opCode = code[++codeIndex]
+                    }
+                    continue
+                case OpCode.if_icmpge:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    if (vleft >= vright) {
+                        codeIndex = (byte1 << 8) | byte2
+                        opCode = code[codeIndex]
+                    } else {
+                        opCode = code[++codeIndex]
+                    }
+                    continue
+                case OpCode.if_icmpgt:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    if (vleft > vright) {
+                        codeIndex = (byte1 << 8) | byte2
+                        opCode = code[codeIndex]
+                    } else {
+                        opCode = code[++codeIndex]
+                    }
+                    continue
+                case OpCode.if_icmple:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    vright = frame.oprandStack.pop()
+                    vleft = frame.oprandStack.pop()
+                    if (vleft <= vright) {
+                        codeIndex = (byte1 << 8) | byte2
+                        opCode = code[codeIndex]
+                    } else {
+                        opCode = code[++codeIndex]
+                    }
+                    continue
+                case OpCode.goto:
+                    byte1 = code[++codeIndex]
+                    byte2 = code[++codeIndex]
+                    codeIndex = (byte1 << 8) | byte2
+                    opCode = code[codeIndex]
+                    continue
+
+                default:
+                    console.log('unknown op code: ' + opCode.toString(16))
+                    return -2
             }
         }
     }
@@ -961,21 +1253,212 @@ export class BCModuleReader {
     private types: Map<string, Type> = new Map()
     private typeInfos: Map<string, any> = new Map()
 
-    read(bc: number[]): BCModule {}
+    read(bc: number[]): BCModule {
+        // 重置状态变量
+        this.index = 0
+        this.types.clear()
 
-    private readString(bc: number[]): string {}
+        let bcModule = new BCModule()
 
-    private readSimpleType(bc: number[]) {}
+        // 1. 读取类型
+        // 1.1 加入系统内置类型
+        this.addSystemTypes()
 
-    private readFunctionType(bc: number[]) {}
+        // 1.2 从字节码中读取类型
+        let str = this.readString(bc)
+        console.assert(str == 'types', '从字节码中读取的字符串不是 types')
+        let numTypes = bc[this.index++]
+        for (let i = 0; i < numTypes; i++) {
+            let typeKind = bc[this.index++]
+            switch (typeKind) {
+                case 1:
+                    this.readSimpleType(bc)
+                    break
+                case 2:
+                    this.readFunctionType(bc)
+                    break
+                case 3:
+                    this.readUnionType(bc)
+                    break
+                default:
+                    console.log('unsupported type kind: ' + typeKind)
+            }
+        }
 
-    private readUnionType(bc: number[]) {}
+        this.buildTypes()
 
-    private addSystemTypes() {}
+        // 2. 读取常量
+        str = this.readString(bc)
+        console.assert(str == 'consts', '从字节码中读取的字符串不是consts')
+        let numConsts = bc[this.index++]
 
-    private buildTypes() {}
+        for (let i = 0; i < numConsts; i++) {
+            let constType = bc[this.index++]
+            if (constType == 1) {
+                bcModule.consts.push(bc[this.index++])
+            } else if (constType == 2) {
+                let str = this.readString(bc)
+                bcModule.consts.push(str)
+            } else if (constType == 3) {
+                let functionSym = this.readFunctionSymbol(bc)
+                bcModule.consts.push(functionSym)
+                if (functionSym.name == 'main') {
+                    bcModule._main = functionSym
+                }
+            } else {
+                console.log('unsupported const type: ' + constType)
+            }
+        }
+        return bcModule
+    }
 
-    private readFunctionSymbol(bc: number[]): FunctionSymbol {}
+    private readString(bc: number[]): string {
+        let len = bc[this.index++]
+        let str = ''
 
-    private readVarSymbol(bc: number[]): VarSymbol {}
+        for (let i = 0; i < len; i++) {
+            str += String.fromCharCode(bc[this.index++])
+        }
+
+        return str
+    }
+
+    private readSimpleType(bc: number[]) {
+        let typeName = this.readString(bc)
+        let numUpperTypes = bc[this.index++]
+        let upperTypes: string[] = []
+        for (let i = 0; i < numUpperTypes; i++) {
+            upperTypes.push(this.readString(bc))
+        }
+
+        let t = new SimpleType(typeName, [])
+        this.types.set(typeName, t)
+        this.typeInfos.set(typeName, upperTypes)
+    }
+
+    private readFunctionType(bc: number[]) {
+        let typeName = this.readString(bc)
+        let returnType = this.readString(bc)
+        let numParams = bc[this.index++]
+        let paramTypes: string[] = []
+
+        for (let i = 0; i < numParams; i++) {
+            paramTypes.push(this.readString(bc))
+        }
+
+        let t = new FunctionType(SysTypes.Any, [], typeName)
+        this.types.set(typeName, t)
+        this.typeInfos.set(typeName, {
+            returnType,
+            paramTypes,
+        })
+    }
+
+    private readUnionType(bc: number[]) {
+        let typeName = this.readString(bc)
+        let numTypes = bc[this.index++]
+        let unionTypes: string[] = []
+
+        for (let i = 0; i < numTypes; i++) {
+            unionTypes.push(this.readString(bc))
+        }
+
+        let t = new UnionType([], typeName)
+        this.types.set(typeName, t)
+        this.typeInfos.set(typeName, unionTypes)
+    }
+
+    private addSystemTypes() {
+        this.types.set('any', SysTypes.Any)
+        this.types.set('number', SysTypes.Number)
+        this.types.set('string', SysTypes.String)
+        this.types.set('integer', SysTypes.Integer)
+        this.types.set('decimal', SysTypes.Decimal)
+        this.types.set('boolean', SysTypes.Boolean)
+        this.types.set('null', SysTypes.Null)
+        this.types.set('undefined', SysTypes.Undefined)
+        this.types.set('void', SysTypes.Void)
+    }
+
+    private buildTypes() {
+        for (let typeName of this.typeInfos.keys()) {
+            let t = this.types.get(typeName) as Type
+
+            if (Type.isSimpleType(t)) {
+            } else if (Type.isFunctionType(t)) {
+                let simpleType = t as SimpleType
+                let upperTypes = this.typeInfos.get(typeName) as string[]
+                for (let utName of upperTypes) {
+                    let ut = this.types.get(utName) as Type
+                    simpleType.upperTypes.push(ut)
+                }
+            } else if (Type.isFunctionType(t)) {
+                let functionType = t as FunctionType
+                let returnType = this.typeInfos.get(typeName)
+                    .returnType as string
+                let paramTypes = this.typeInfos.get(typeName)
+                    .paramTypes as string[]
+                functionType.returnType = this.types.get(returnType) as Type
+
+                for (let utName of paramTypes) {
+                    let ut = this.types.get(utName) as Type
+                    functionType.paramTypes.push(ut)
+                }
+            } else if (Type.isUnionType(t)) {
+                let unionType = t as UnionType
+                let types = this.typeInfos.get(typeName) as string[]
+
+                for (let utName of types) {
+                    let ut = this.types.get(utName) as Type
+                    unionType.types.push(ut)
+                }
+            } else {
+                console.log('unsupported type in BCModuleReader.')
+                console.log(t)
+            }
+        }
+
+        this.typeInfos.clear()
+    }
+
+    private readFunctionSymbol(bc: number[]): FunctionSymbol {
+        let functionName = this.readString(bc)
+
+        let typeName = this.readString(bc)
+        let functionType = this.types.get(typeName) as FunctionType
+
+        let opStackSize = bc[this.index++]
+
+        let numVars = bc[this.index++]
+
+        let vars: VarSymbol[] = []
+        for (let i: number = 0; i < numVars; i++) {
+            vars.push(this.readVarSymbol(bc))
+        }
+
+        let numByteCode = bc[this.index++]
+        let byteCodes: number[] | null
+        if (numByteCode == 0) {
+            byteCodes = null
+        } else {
+            byteCodes = bc.slice(this.index, this.index + numByteCode)
+            this.index += numByteCode
+        }
+
+        let functionSym = new FunctionSymbol(functionName, functionType)
+        functionSym.vars = vars
+        functionSym.opStackSize = opStackSize
+        functionSym.byteCode = byteCodes
+
+        return functionSym
+    }
+
+    private readVarSymbol(bc: number[]): VarSymbol {
+        let varName = this.readString(bc)
+
+        let typeName = this.readString(bc)
+        let varType = this.types.get(typeName) as Type
+
+        return new VarSymbol(varName, varType)
+    }
 }
