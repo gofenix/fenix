@@ -1,3 +1,4 @@
+import { formatWithOptions } from 'util'
 import {
     AstVisitor,
     Binary,
@@ -785,19 +786,168 @@ class StackFrame {
 export class BCModuleWriter {
     private types: Type[] = [] // 保存该模块所涉及的类型
 
-    write(bcModule: BCModule): number[] {}
+    write(bcModule: BCModule): number[] {
+        let bc2: number[] = []
+        this.types = []
 
-    private writeVarSymbol(sym: VarSymbol): number[] {}
+        // 写入常量
+        let numConsts = 0
+        for (let c of bcModule.consts) {
+            if (typeof c == 'number') {
+                bc2.push(1)
+                bc2.push(c)
+                numConsts++
+            } else if (typeof c == 'string') {
+                bc2.push(2)
+                this.writeString(bc2, c)
+                numConsts++
+            } else if (typeof c == 'object') {
+                let functionSym = c as FunctionSymbol
+                if (!built_ins.has(functionSym.name)) {
+                    bc2.push(3)
+                    bc2 = bc2.concat(this.writeFunctionSymbol(functionSym))
+                    numConsts++
+                }
+            } else {
+                console.log('unsupported const in BCModuleWriter.')
+                console.log(c)
+            }
+        }
 
-    writeFunctionSymbol(sym: FunctionSymbol): number[] {}
+        let bc1: number[] = []
+        this.writeString(bc1, 'types')
+        bc1.push(this.types.length)
+        for (let t of this.types) {
+            if (Type.isFunctionType(t)) {
+                bc1 = bc1.concat(this.writeFunctionType(t as FunctionType))
+            } else if (Type.isSimpleType(t)) {
+                bc1 = bc1.concat(this.writeSimpleType(t as SimpleType))
+            } else if (Type.isUnionType(t)) {
+                bc1 = bc1.concat(this.writeUnionType(t as UnionType))
+            } else {
+                console.log('Unsupported type in BCModuleWriter')
+                console.log(t)
+            }
+        }
 
-    writeSimpleType(t: SimpleType): number[] {}
+        this.writeString(bc1, 'consts')
+        bc1.push(numConsts)
 
-    writeFunctionType(t: FunctionType): number[] {}
+        return bc1.concat(bc2)
+    }
 
-    writeUnionType(t: UnionType): number[] {}
+    private writeVarSymbol(sym: VarSymbol): number[] {
+        let bc: number[] = []
 
-    private writeString(bc: number[], str: string) {}
+        this.writeString(bc, sym.name)
+
+        this.writeString(bc, sym.theType.name)
+
+        if (
+            !SysTypes.isSysType(sym.theType) &&
+            this.types.indexOf(sym.theType) == -1
+        ) {
+            this.types.push(sym.theType)
+        }
+
+        return bc
+    }
+
+    writeFunctionSymbol(sym: FunctionSymbol): number[] {
+        let bc: number[] = []
+
+        this.writeString(bc, sym.name)
+
+        this.writeString(bc, sym.theType.name)
+
+        if (
+            !SysTypes.isSysType(sym.theType) &&
+            this.types.indexOf(sym.theType) == -1
+        ) {
+            this.types.push(sym.theType)
+        }
+
+        bc.push(sym.opStackSize)
+
+        bc.push(sym.vars.length)
+
+        for (let v of sym.vars) {
+            bc = bc.concat(this.writeVarSymbol(v))
+        }
+
+        if (sym.byteCode == null) {
+            bc.push(0)
+        } else {
+            bc.push((sym.byteCode as number[]).length)
+            bc = bc.concat(sym.byteCode as number[])
+        }
+
+        return bc
+    }
+
+    writeSimpleType(t: SimpleType): number[] {
+        let bc: number[] = []
+        if (SysTypes.isSysType(t)) {
+            return bc
+        }
+
+        bc.push(1)
+
+        this.writeString(bc, t.name)
+
+        bc.push(t.upperTypes.length)
+        for (let ut of t.upperTypes) {
+            this.writeString(bc, ut.name)
+            if (!SysTypes.isSysType(ut) && this.types.indexOf(ut) == -1) {
+                this.types.push(ut)
+            }
+        }
+
+        return bc
+    }
+
+    writeFunctionType(t: FunctionType): number[] {
+        let bc: number[] = []
+
+        bc.push(2)
+
+        this.writeString(bc, t.name)
+
+        this.writeString(bc, t.returnType.name)
+
+        bc.push(t.paramTypes.length)
+
+        for (let pt of t.paramTypes) {
+            this.writeString(bc, pt.name)
+            if (this.types.indexOf(pt) == -1) {
+                this.types.push(pt)
+            }
+        }
+
+        return bc
+    }
+
+    writeUnionType(t: UnionType): number[] {
+        let bc: number[] = []
+
+        bc.push(3)
+
+        for (let ut of t.types) {
+            this.writeString(bc, t.name)
+            if (this.types.indexOf(ut) == -1) {
+                this.types.push(ut)
+            }
+        }
+
+        return bc
+    }
+
+    private writeString(bc: number[], str: string) {
+        bc.push(str.length)
+        for (let i = 0; i < str.length; i++) {
+            bc.push(str.charCodeAt(i))
+        }
+    }
 }
 
 /**
