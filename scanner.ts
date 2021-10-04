@@ -1,6 +1,14 @@
-///////////////////////////////////词法分析////////////////////////////////////////////////////////////////////////
+/**
+ * 词法分析器
+ *
+ * 缺失的特性：
+ * 1.不支持Unicode；
+ * 2.不支持二进制、八进制、十六进制
+ * 3.不支持转义
+ * 4.字符串只支持双引号
+ */
 
-// token 类型
+//Token的类型
 export enum TokenKind {
     Keyword,
     Identifier,
@@ -14,13 +22,12 @@ export enum TokenKind {
     EOF,
 }
 
-// token的数据结构
+// 代表一个Token的数据结构
 export class Token {
     kind: TokenKind
     code: Op | Seperator | Keyword | null
     text: string
     pos: Position
-
     constructor(
         kind: TokenKind,
         text: string,
@@ -32,7 +39,6 @@ export class Token {
         this.pos = pos
         this.code = code
     }
-
     toString(): string {
         return (
             'Token' +
@@ -47,186 +53,82 @@ export class Token {
     }
 }
 
+//Token（以及AST）在源代码中的位置，便于报错和调试
+export class Position {
+    begin: number //开始于哪个字符，从1开始计数
+    end: number //结束于哪个字符
+    line: number //所在的行号，从1开始
+    col: number //所在的列号，从1开始
+
+    constructor(begin: number, end: number, line: number, col: number) {
+        this.begin = begin
+        this.end = end
+        this.line = line
+        this.col = col
+    }
+    toString(): string {
+        return (
+            '(ln:' +
+            this.line +
+            ', col:' +
+            this.col +
+            ', pos:' +
+            this.begin +
+            ')'
+        )
+    }
+}
+
 /**
- * 分隔符
+ * 一个字符串流。其操作为：
+ * peek():预读下一个字符，但不移动指针；
+ * next():读取下一个字符，并且移动指针；
+ * eof():判断是否已经到了结尾。
  */
-export enum Seperator {
-    OpenBracket = 0, //[
-    CloseBracket, //]
-    OpenParen, //(
-    CloseParen, //)
-    OpenBrace, //{
-    CloseBrace, //}
-    Colon, //:
-    SemiColon, //;
-}
-
-/**
- * 运算符
- */
-export enum Op {
-    QuestionMark = 100,
-    Ellipsis,
-    Dot,
-    Comma,
-    At,
-
-    RightShiftArithmetic, //>>
-    LeftShiftArithmetic, //<<
-    RightShiftLogical, //>>>
-    IdentityEquals, //===
-    IdentityNotEquals, //!==
-
-    BitNot, //~
-    BitAnd, //&
-    BitXOr, //^
-    BitOr, //|
-
-    Not, //!
-    And, //&&
-    Or, //||
-
-    Assign, //=
-    MultiplyAssign, //*=
-    DivideAssign, ///=
-    ModulusAssign, //%=
-    PlusAssign, //+=
-    MinusAssign, //-=
-    LeftShiftArithmeticAssign, //<<=
-    RightShiftArithmeticAssign, //>>=
-    RightShiftLogicalAssign, //>>>=
-    BitAndAssign, //&=
-    BitXorAssign, //^=
-    BitOrAssign, //|=
-
-    ARROW, //=>
-
-    Inc, //++
-    Dec, //--
-
-    Plus, //+
-    Minus, //-
-    Multiply, //*
-    Divide, ///
-    Modulus, //%
-
-    EQ, //==
-    NE, //!=
-    G, //>
-    GE, //>=
-    L, //<
-    LE, //<=
-}
-
-export class Operators {
-    static isAssignOp(op: Op): boolean {
-        return op >= Op.Assign && op <= Op.BitOrAssign
-    }
-
-    static isRelationOp(op: Op): boolean {
-        return op >= Op.EQ && op <= Op.LE
-    }
-
-    static isArithmeticOp(op: Op): boolean {
-        return op >= Op.Plus && op <= Op.Modulus
-    }
-
-    static isLogicalOp(op: Op): boolean {
-        return op >= Op.Not && op <= Op.Or
-    }
-}
-
-export enum Keyword {
-    Function = 200,
-    Class,
-    Break,
-    Delete,
-    Return,
-    Case,
-    Do,
-    If,
-    Switch,
-    Var,
-    Catch,
-    Else,
-    In,
-    This,
-    Void,
-    Continue,
-    False,
-    Instanceof,
-    Throw,
-    While,
-    Debugger,
-    Finally,
-    New,
-    True,
-    With,
-    Default,
-    For,
-    Null,
-    Try,
-    Typeof,
-    //下面这些用于严格模式
-    Implements,
-    Let,
-    Private,
-    Public,
-    Yield,
-    Interface,
-    Package,
-    Protected,
-    Static,
-}
-
-// 字符串流
-// peek(): 预读下一个字符，但不移动指针
-// next() 读取下一个字符，移动指针
-// eof() 判断是否到了结尾
 export class CharStream {
     data: string
     pos: number = 0
     line: number = 1
-    col: number = 0
-
+    col: number = 1
     constructor(data: string) {
         this.data = data
     }
-
     peek(): string {
         return this.data.charAt(this.pos)
     }
-
     next(): string {
         let ch = this.data.charAt(this.pos++)
         if (ch == '\n') {
             this.line++
-            this.col = 0
+            this.col = 1
         } else {
             this.col++
         }
         return ch
     }
-
     eof(): boolean {
         return this.peek() == ''
     }
-
     getPosition(): Position {
         return new Position(this.pos + 1, this.pos + 1, this.line, this.col)
     }
 }
 
-// 词法分析器
-// 词法分析器的接口像是一个流，词法解析是按需进行的
-// 支持下面两个操作：
-// next() 返回当前的token，并移动到下一个token
-// peek() 返回当前token，但是不移动位置
+/**
+ * 词法分析器。
+ * 词法分析器的接口像是一个流，词法解析是按需进行的。
+ * 支持下面两个操作：
+ * next(): 返回当前的Token，并移向下一个Token。
+ * peek(): 预读当前的Token，但不移动当前位置。
+ * peek2(): 预读第二个Token。
+ */
 export class Scanner {
+    //采用一个array，能预存多个Token，从而支持预读多个Token
     tokens: Array<Token> = new Array<Token>()
+    //作为输入的字符串流
     stream: CharStream
-
-    private lastPos: Position = new Position(0, 0, 0, 0) // 这个position不是合法的，避免出现null
+    //前一个Token的位置
+    private lastPos: Position = new Position(0, 0, 0, 0) //这个Position是不合法的，只是为了避免null。
 
     private KeywordMap: Map<string, Keyword> = new Map([
         ['function', Keyword.Function],
@@ -281,6 +183,7 @@ export class Scanner {
             t = this.getAToken()
         }
         this.lastPos = t.pos
+        // console.log("in next(): '" + t.text + "'");
         return t
     }
 
@@ -302,25 +205,27 @@ export class Scanner {
         return t
     }
 
+    //获取接下来的Token的位置
     getNextPos(): Position {
         return this.peek().pos
     }
 
+    //获取前一个Token的position
     getLastPos(): Position {
         return this.lastPos
     }
 
-    // 从字符串流中获取一个token
+    //从字符串流中获取一个新Token。
     private getAToken(): Token {
+        //跳过所有空白字符
         this.skipWhiteSpaces()
         let pos = this.stream.getPosition()
-
         if (this.stream.eof()) {
             return new Token(TokenKind.EOF, 'EOF', pos)
         } else {
             let ch: string = this.stream.peek()
             if (this.isLetter(ch) || ch == '_') {
-                return this.parseIdentifier()
+                return this.parseIdentifer()
             } else if (ch == '"') {
                 return this.parseStringLiteral()
             } else if (ch == '(') {
@@ -339,22 +244,6 @@ export class Scanner {
                     pos,
                     Seperator.CloseParen
                 )
-            } else if (ch == '[') {
-                this.stream.next()
-                return new Token(
-                    TokenKind.Seperator,
-                    ch,
-                    pos,
-                    Seperator.OpenBracket
-                )
-            } else if (ch == ']') {
-                this.stream.next()
-                return new Token(
-                    TokenKind.Seperator,
-                    ch,
-                    pos,
-                    Seperator.CloseBracket
-                )
             } else if (ch == '{') {
                 this.stream.next()
                 return new Token(
@@ -370,6 +259,22 @@ export class Scanner {
                     ch,
                     pos,
                     Seperator.CloseBrace
+                )
+            } else if (ch == '[') {
+                this.stream.next()
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.OpenBracket
+                )
+            } else if (ch == ']') {
+                this.stream.next()
+                return new Token(
+                    TokenKind.Seperator,
+                    ch,
+                    pos,
+                    Seperator.CloseBracket
                 )
             } else if (ch == ':') {
                 this.stream.next()
@@ -391,28 +296,29 @@ export class Scanner {
             } else if (ch == '@') {
                 this.stream.next()
                 return new Token(TokenKind.Seperator, ch, pos, Op.At)
-            } else if (this.isDigit(ch)) {
-                //解析数字字面量，语法是：
-                // DecimalLiteral: IntegerLiteral '.' [0-9]*
-                //   | '.' [0-9]+
-                //   | IntegerLiteral
-                //   ;
-                // IntegerLiteral: '0' | [1-9] [0-9]* ;
+            }
+            //解析数字字面量，语法是：
+            // DecimalLiteral: IntegerLiteral '.' [0-9]*
+            //   | '.' [0-9]+
+            //   | IntegerLiteral
+            //   ;
+            // IntegerLiteral: '0' | [1-9] [0-9]* ;
+            else if (this.isDigit(ch)) {
                 this.stream.next()
                 let ch1 = this.stream.peek()
                 let literal: string = ''
                 if (ch == '0') {
                     //暂不支持八进制、二进制、十六进制
-                    if (!(ch >= '1' && ch <= '9')) {
+                    if (!(ch1 >= '1' && ch1 <= '9')) {
                         literal = '0'
                     } else {
                         console.log(
-                            "0 can't be followed by other digit now, at line: " +
+                            '0 cannot be followed by other digit now, at line: ' +
                                 this.stream.line +
                                 ' col: ' +
                                 this.stream.col
                         )
-                        // 暂时跳过去
+                        //暂时先跳过去
                         this.stream.next()
                         return this.getAToken()
                     }
@@ -424,9 +330,9 @@ export class Scanner {
                         ch1 = this.stream.peek()
                     }
                 }
-                // 小数点
+                //加上小数点.
                 if (ch1 == '.') {
-                    // 小数字面量
+                    //小数字面量
                     literal += '.'
                     this.stream.next()
                     ch1 = this.stream.peek()
@@ -438,14 +344,14 @@ export class Scanner {
                     pos.end = this.stream.pos + 1
                     return new Token(TokenKind.DecimalLiteral, literal, pos)
                 } else {
-                    // 返回一个整型的字面量
+                    //返回一个整型字面量
                     return new Token(TokenKind.IntegerLiteral, literal, pos)
                 }
             } else if (ch == '.') {
                 this.stream.next()
                 let ch1 = this.stream.peek()
                 if (this.isDigit(ch1)) {
-                    //小数字面了
+                    //小数字面量
                     let literal = '.'
                     while (this.isDigit(ch1)) {
                         ch = this.stream.next()
@@ -454,10 +360,11 @@ export class Scanner {
                     }
                     pos.end = this.stream.pos + 1
                     return new Token(TokenKind.DecimalLiteral, literal, pos)
-                } else if (ch1 == '.') {
-                    // 省略号
+                }
+                //...省略号
+                else if (ch1 == '.') {
                     this.stream.next()
-                    // 第三个.
+                    //第三个.
                     ch1 = this.stream.peek()
                     if (ch1 == '.') {
                         pos.end = this.stream.pos + 1
@@ -468,16 +375,16 @@ export class Scanner {
                             Op.Ellipsis
                         )
                     } else {
-                        console.log('Unrecognized pattern: .., missed a . ?')
+                        console.log('Unrecognized pattern : .., missed a . ?')
                         return this.getAToken()
                     }
-                } else {
-                    // . 号分隔符
+                }
+                //.号分隔符
+                else {
                     return new Token(TokenKind.Operator, '.', pos, Op.Dot)
                 }
             } else if (ch == '/') {
                 this.stream.next()
-
                 let ch1 = this.stream.peek()
                 if (ch1 == '*') {
                     this.skipMultipleLineComments()
@@ -552,7 +459,7 @@ export class Scanner {
                 }
             } else if (ch == '%') {
                 this.stream.next()
-                let ch1 = this.stream.next()
+                let ch1 = this.stream.peek()
                 if (ch1 == '=') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
@@ -603,7 +510,7 @@ export class Scanner {
                             TokenKind.Operator,
                             '>>=',
                             pos,
-                            Op.RightShiftArithmeticAssign
+                            Op.LeftShiftArithmeticAssign
                         )
                     } else {
                         pos.end = this.stream.pos + 1
@@ -626,7 +533,6 @@ export class Scanner {
                     return new Token(TokenKind.Operator, '<=', pos, Op.LE)
                 } else if (ch1 == '<') {
                     this.stream.next()
-                    ch1 = this.stream.next()
                     ch1 = this.stream.peek()
                     if (ch1 == '=') {
                         this.stream.next()
@@ -655,7 +561,7 @@ export class Scanner {
                 if (ch1 == '=') {
                     this.stream.next()
                     let ch1 = this.stream.peek()
-                    if (ch1 == '=') {
+                    if ((ch1 = '=')) {
                         this.stream.next()
                         pos.end = this.stream.pos + 1
                         return new Token(
@@ -668,8 +574,9 @@ export class Scanner {
                         pos.end = this.stream.pos + 1
                         return new Token(TokenKind.Operator, '==', pos, Op.EQ)
                     }
-                } else if (ch1 == '>') {
-                    // 箭头函数
+                }
+                //箭头=>
+                else if (ch1 == '>') {
                     this.stream.next()
                     pos.end = this.stream.pos + 1
                     return new Token(TokenKind.Operator, '=>', pos, Op.ARROW)
@@ -682,7 +589,7 @@ export class Scanner {
                 if (ch1 == '=') {
                     this.stream.next()
                     let ch1 = this.stream.peek()
-                    if (ch1 == '=') {
+                    if ((ch1 = '=')) {
                         this.stream.next()
                         pos.end = this.stream.pos + 1
                         return new Token(
@@ -692,8 +599,9 @@ export class Scanner {
                             Op.IdentityNotEquals
                         )
                     } else {
+                        this.stream.next()
                         pos.end = this.stream.pos + 1
-                        return new Token(TokenKind.Operator, '!', pos, Op.Not)
+                        return new Token(TokenKind.Operator, '!=', pos, Op.NE)
                     }
                 } else {
                     return new Token(TokenKind.Operator, '!', pos, Op.Not)
@@ -749,17 +657,17 @@ export class Scanner {
                         Op.BitXorAssign
                     )
                 } else {
-                    return new Token(TokenKind.Operator, '^', pos, Op.BitOr)
+                    return new Token(TokenKind.Operator, '^', pos, Op.BitXOr)
                 }
             } else if (ch == '~') {
                 this.stream.next()
                 return new Token(TokenKind.Operator, '~', pos, Op.BitNot)
             } else {
-                // 暂时去掉不能识别的字符
+                //暂时去掉不能识别的字符
                 console.log(
                     "Unrecognized pattern meeting ': " +
                         ch +
-                        ', at ' +
+                        "', at ln:" +
                         this.stream.line +
                         ' col: ' +
                         this.stream.col
@@ -770,26 +678,29 @@ export class Scanner {
         }
     }
 
-    // 跳过单行注释
+    /**
+     * 跳过单行注释
+     */
     private skipSingleLineComment() {
-        // 跳过第二个 / ，第一个之前已经跳过去了
+        //跳过第二个/，第一个之前已经跳过去了。
         this.stream.next()
 
-        // 往后一直找到回车或者eof
+        //往后一直找到回车或者eof
         while (this.stream.peek() != '\n' && !this.stream.eof()) {
             this.stream.next()
         }
     }
 
-    // 跳过多行的注释
+    /**
+     * 跳过多行注释
+     */
     private skipMultipleLineComments() {
-        // 跳过*，/之前已经跳过去了
+        //跳过*，/之前已经跳过去了。
         this.stream.next()
 
         if (!this.stream.eof()) {
             let ch1 = this.stream.next()
-
-            // 往后一直找到回车或者eof
+            //往后一直找到回车或者eof
             while (!this.stream.eof()) {
                 let ch2 = this.stream.next()
                 if (ch1 == '*' && ch2 == '/') {
@@ -799,7 +710,7 @@ export class Scanner {
             }
         }
 
-        // 如果没有匹配上，报错
+        //如果没有匹配上，报错。
         console.log(
             "Failed to find matching */ for multiple line comments at ': " +
                 this.stream.line +
@@ -808,20 +719,24 @@ export class Scanner {
         )
     }
 
-    // 跳过空白的字符
+    /**
+     * 跳过空白字符
+     */
     private skipWhiteSpaces() {
         while (this.isWhiteSpace(this.stream.peek())) {
             this.stream.next()
         }
     }
 
-    // 字符串字面量
-    // 目前只支持双引号，并且不支持转义
+    /**
+     * 字符串字面量。
+     * 目前只支持双引号，并且不支持转义。
+     */
     private parseStringLiteral(): Token {
         let pos = this.stream.getPosition()
-        let token: Token = new Token(TokenKind.StringLiteral, '', pos)
+        let token = new Token(TokenKind.StringLiteral, '', pos)
 
-        //第一个字符不用判断，因为在调用的那里已经判断过了
+        //第一个字符不用判断，因为在调用者那里已经判断过了
         this.stream.next()
 
         while (!this.stream.eof() && this.stream.peek() != '"') {
@@ -829,7 +744,7 @@ export class Scanner {
         }
 
         if (this.stream.peek() == '"') {
-            // 消化掉字符换末尾的引号
+            //消化掉字符换末尾的引号
             this.stream.next()
         } else {
             console.log(
@@ -839,36 +754,43 @@ export class Scanner {
                     this.stream.col
             )
         }
+
         pos.end = this.stream.pos + 1
         return token
     }
 
-    // 解析标识符，从标识符中还要挑选出关键字
-    private parseIdentifier(): Token {
+    /**
+     * 解析标识符。从标识符中还要挑出关键字。
+     */
+    private parseIdentifer(): Token {
         let pos = this.stream.getPosition()
-        let token: Token = new Token(TokenKind.Identifier, '', pos)
+        let token = new Token(TokenKind.Identifier, '', pos)
 
-        // 同理，第一个字符不用判断，因为在调用者那里已经判断了
+        //第一个字符不用判断，因为在调用者那里已经判断过了
         token.text += this.stream.next()
 
-        // 读入后序字符
+        //读入后序字符
         while (
             !this.stream.eof() &&
-            this.isLetterDigitOrUnderscore(this.stream.peek())
+            this.isLetterDigitOrUnderScore(this.stream.peek())
         ) {
             token.text += this.stream.next()
         }
 
         pos.end = this.stream.pos + 1
 
-        // 识别出关键字
+        //识别出关键字（从字典里查，速度会比较快）
         if (this.KeywordMap.has(token.text)) {
             token.kind = TokenKind.Keyword
             token.code = this.KeywordMap.get(token.text) as Keyword
-        } else if (token.text == 'null') {
+        }
+        //null
+        else if (token.text == 'null') {
             token.kind = TokenKind.NullLiteral
             token.code = Keyword.Null
-        } else if (token.text == 'true') {
+        }
+        //布尔型字面量
+        else if (token.text == 'true') {
             token.kind = TokenKind.BooleanLiteral
             token.code = Keyword.True
         } else if (token.text == 'false') {
@@ -876,11 +798,10 @@ export class Scanner {
             token.code = Keyword.False
         }
 
-        // console.log("=================>" + token.kind + "   " + token.text)
         return token
     }
 
-    private isLetterDigitOrUnderscore(ch: string): boolean {
+    private isLetterDigitOrUnderScore(ch: string): boolean {
         return (
             (ch >= 'A' && ch <= 'Z') ||
             (ch >= 'a' && ch <= 'z') ||
@@ -902,20 +823,137 @@ export class Scanner {
     }
 }
 
-export class Position {
-    begin: number
-    end: number
-    line: number
-    col: number
+/////////////////////////////////////////////////////////////////////////////
+//Token的Code
+//注意：几种类型的code的取值不能重叠。这样，由code就可以决定kind.
 
-    constructor(begin: number, end: number, line: number, col: number) {
-        this.begin = begin
-        this.end = end
-        this.line = line
-        this.col = col
+export enum Seperator {
+    OpenBracket = 0, //[
+    CloseBracket, //]
+    OpenParen, //(
+    CloseParen, //)
+    OpenBrace, //{
+    CloseBrace, //}
+    Colon, //:
+    SemiColon, //;
+}
+
+//运算符
+export enum Op {
+    QuestionMark = 100, //?   让几个类型的code取值不重叠
+    Ellipsis, //...
+    Dot, //.
+    Comma, //,
+    At, //@
+
+    RightShiftArithmetic, //>>
+    LeftShiftArithmetic, //<<
+    RightShiftLogical, //>>>
+    IdentityEquals, //===
+    IdentityNotEquals, //!==
+
+    BitNot, //~
+    BitAnd, //&
+    BitXOr, //^
+    BitOr, //|
+
+    Not, //!
+    And, //&&
+    Or, //||
+
+    Assign, //=
+    MultiplyAssign, //*=
+    DivideAssign, ///=
+    ModulusAssign, //%=
+    PlusAssign, //+=
+    MinusAssign, //-=
+    LeftShiftArithmeticAssign, //<<=
+    RightShiftArithmeticAssign, //>>=
+    RightShiftLogicalAssign, //>>>=
+    BitAndAssign, //&=
+    BitXorAssign, //^=
+    BitOrAssign, //|=
+
+    ARROW, //=>
+
+    Inc, //++
+    Dec, //--
+
+    Plus, //+
+    Minus, //-
+    Multiply, //*
+    Divide, ///
+    Modulus, //%
+
+    EQ, //==
+    NE, //!=
+    G, //>
+    GE, //>=
+    L, //<
+    LE, //<=
+}
+
+/**
+ * 对运算符的一些判断
+ */
+export class Operators {
+    static isAssignOp(op: Op): boolean {
+        return op >= Op.Assign && op <= Op.BitOrAssign
     }
 
-    toString() {
-        return `(ln: ${this.line}, col: ${this.col}, pos: ${this.begin})`
+    static isRelationOp(op: Op): boolean {
+        return op >= Op.EQ && op <= Op.LE
     }
+
+    static isArithmeticOp(op: Op): boolean {
+        return op >= Op.Plus && op <= Op.Modulus
+    }
+
+    static isLogicalOp(op: Op): boolean {
+        return op >= Op.Not && op <= Op.Or
+    }
+}
+
+//关键字
+export enum Keyword {
+    Function = 200,
+    Class,
+    Break,
+    Delete,
+    Return,
+    Case,
+    Do,
+    If,
+    Switch,
+    Var,
+    Catch,
+    Else,
+    In,
+    This,
+    Void,
+    Continue,
+    False,
+    Instanceof,
+    Throw,
+    While,
+    Debugger,
+    Finally,
+    New,
+    True,
+    With,
+    Default,
+    For,
+    Null,
+    Try,
+    Typeof,
+    //下面这些用于严格模式
+    Implements,
+    Let,
+    Private,
+    Public,
+    Yield,
+    Interface,
+    Package,
+    Protected,
+    Static,
 }

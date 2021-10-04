@@ -1,15 +1,2 @@
 let a = 1;
 println(a);
-
-function foo() {
-    let b = tick();
-    return b;
-}
-
-let c = foo();
-
-println(c);
-
-for(let i = 1; i < 10; i++) {
-    println(i);
-}

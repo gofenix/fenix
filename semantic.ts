@@ -2,7 +2,9 @@
  * 语义分析功能
  *
  * 当前特性：
- * 1. 树状的符号表
+ * 1.树状的符号表
+ * 2.简单的引用消解：没有考虑声明的先后顺序，也没有考虑闭包
+ * 3.简单的作用域
  *
  */
 
@@ -23,14 +25,20 @@ import {
     DecimalLiteral,
     StringLiteral,
     Variable,
+    ReturnStatement,
+    IfStatement,
     ForStatement,
     Unary,
+    CallSignature,
+    BooleanLiteral,
+    NullLiteral,
 } from './ast'
-import { CompilerError } from './error'
-import { Op, Operators } from './scanner'
+import { time, assert } from 'console'
+import { Symbol, SymKind, FunctionSymbol, VarSymbol, built_ins } from './symbol'
 import { Scope } from './scope'
-import { built_ins, FunctionSymbol, SymKind, VarSymbol } from './symbol'
-import { FunctionType, SysTypes, Type } from './types'
+import { SysTypes, Type, FunctionType } from './types'
+import { Op, Operators } from './scanner'
+import { CompilerError } from './error'
 
 export class SemanticAnalyer {
     passes: SemanticAstVisitor[] = [
@@ -39,10 +47,11 @@ export class SemanticAnalyer {
         new TypeChecker(),
         new TypeConverter(),
         new LeftValueAttributor(),
+        new Trans(),
     ]
 
-    errors: CompilerError[] = []
-    warnings: CompilerError[] = []
+    errors: CompilerError[] = [] //语义错误
+    warnings: CompilerError[] = [] //语义报警信息
 
     execute(prog: Prog): void {
         this.errors = []
@@ -57,25 +66,24 @@ export class SemanticAnalyer {
 
 export class SemanticError extends CompilerError {
     node: AstNode
-
     constructor(msg: string, node: AstNode, isWarning = false) {
-        super(msg, node.beginPos, isWarning)
+        super(msg, node.beginPos, /* node.endPos, */ isWarning)
         this.node = node
     }
 }
 
 abstract class SemanticAstVisitor extends AstVisitor {
-    errors: CompilerError[] = []
-    warnings: CompilerError[] = []
+    errors: CompilerError[] = [] //语义错误
+    warnings: CompilerError[] = [] //语义报警信息
 
     addError(msg: string, node: AstNode) {
         this.errors.push(new SemanticError(msg, node))
-        console.log(`@${node.beginPos.toString()}: ${msg}`)
+        console.log('@' + node.beginPos.toString() + ' : ' + msg)
     }
 
-    addWarnings(msg: string, node: AstNode) {
-        this.errors.push(new SemanticError(msg, node, true))
-        console.log(`@${node.beginPos.toString()}: ${msg}`)
+    addWarning(msg: string, node: AstNode) {
+        this.warnings.push(new SemanticError(msg, node, true))
+        console.log('@' + node.beginPos.toString() + ' : ' + msg)
     }
 }
 
@@ -83,14 +91,18 @@ abstract class SemanticAstVisitor extends AstVisitor {
 // 建立符号表
 //
 
+/**
+ * 把符号加入符号表。
+ */
 class Enter extends SemanticAstVisitor {
-    scope: Scope | null = null
+    scope: Scope | null = null //当前所属的scope
     functionSym: FunctionSymbol | null = null
 
     /**
-     * 返回最顶级的scope对象
+     * 返回最顶级的Scope对象
+     * @param prog
      */
-    visitProg(prog: Prog): any {
+    visitProg(prog: Prog) {
         let sym = new FunctionSymbol(
             'main',
             new FunctionType(SysTypes.Integer, [])
@@ -103,19 +115,18 @@ class Enter extends SemanticAstVisitor {
 
     /**
      * 把函数声明加入符号表
-     *
      * @param functionDecl
      */
     visitFunctionDecl(functionDecl: FunctionDecl): any {
         let currentScope = this.scope as Scope
 
+        //创建函数的symbol
         let paramTypes: Type[] = []
         if (functionDecl.callSignature.paramList != null) {
             for (let p of functionDecl.callSignature.paramList.params) {
                 paramTypes.push(p.theType)
             }
         }
-
         let sym = new FunctionSymbol(
             functionDecl.name,
             new FunctionType(functionDecl.callSignature.theType, paramTypes)
@@ -123,6 +134,7 @@ class Enter extends SemanticAstVisitor {
         sym.decl = functionDecl
         functionDecl.sym = sym
 
+        //把函数加入当前scope
         if (currentScope.hasSymbol(functionDecl.name)) {
             this.addError(
                 'Dumplicate symbol: ' + functionDecl.name,
@@ -132,36 +144,47 @@ class Enter extends SemanticAstVisitor {
             currentScope.enter(functionDecl.name, sym)
         }
 
+        //修改当前的函数符号
         let lastFunctionSym = this.functionSym
         this.functionSym = sym
 
+        //创建新的Scope，用来存放参数
         let oldScope = currentScope
         this.scope = new Scope(oldScope)
         functionDecl.scope = this.scope
 
+        //遍历子节点
         super.visitFunctionDecl(functionDecl)
 
+        //恢复当前函数
         this.functionSym = lastFunctionSym
 
+        //恢复原来的Scope
         this.scope = oldScope
     }
 
     /**
-     * 遇到块儿的时候，就建立一级新的作用域
+     * 遇到块的时候，就建立一级新的作用域。
      * 支持块作用域
-     *
      * @param block
      */
     visitBlock(block: Block): any {
+        //创建下一级scope
         let oldScope = this.scope
         this.scope = new Scope(this.scope)
         block.scope = this.scope
 
+        //调用父类的方法，遍历所有的语句
         super.visitBlock(block)
 
+        //重新设置当前的Scope
         this.scope = oldScope
     }
 
+    /**
+     * 把变量声明加入符号表
+     * @param variableDecl
+     */
     visitVariableDecl(variableDecl: VariableDecl): any {
         let currentScope = this.scope as Scope
         if (currentScope.hasSymbol(variableDecl.name)) {
@@ -170,74 +193,110 @@ class Enter extends SemanticAstVisitor {
                 variableDecl
             )
         }
-
+        //把变量加入当前的符号表
         let sym = new VarSymbol(variableDecl.name, variableDecl.theType)
         variableDecl.sym = sym
         currentScope.enter(variableDecl.name, sym)
 
+        //把本地变量也加入函数符号中，可用于后面生成代码
         this.functionSym?.vars.push(sym)
     }
 
+    /**
+     * 对于for循环来说，由于可以在for的init部分声明变量，所以要新建一个Scope。
+     * @param forStmt
+     */
     visitForStatement(forStmt: ForStatement): any {
-        // 创建下一级的scope
+        //创建下一级scope
         let oldScope = this.scope
         this.scope = new Scope(this.scope)
         forStmt.scope = this.scope
 
+        //调用父类的方法，遍历所有的语句
         super.visitForStatement(forStmt)
 
+        //重新设置当前的Scope
         this.scope = oldScope
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////
 // 引用消解
-class RefResolver extends SemanticAstVisitor {
-    scope: Scope | null = null // 当前scope
+// 1.函数引用消解
+// 2.变量应用消解
 
-    // 每个scope已经声明了变量的列表
+/**
+ * 引用消解
+ * 遍历AST。如果发现函数调用和变量引用，就去找它的定义。
+ */
+class RefResolver extends SemanticAstVisitor {
+    scope: Scope | null = null //当前的Scope
+
+    //每个Scope已经声明了的变量的列表
     declaredVarsMap: Map<Scope, Map<string, VarSymbol>> = new Map()
 
     visitFunctionDecl(functionDecl: FunctionDecl): any {
+        //1.修改scope
         let oldScope = this.scope
         this.scope = functionDecl.scope as Scope
-        console.assert(this.scope != null, 'scope不可为null')
+        assert(this.scope != null, 'Scope不可为null')
 
+        //为已声明的变量设置一个存储区域
         this.declaredVarsMap.set(this.scope, new Map())
 
+        //2.遍历下级节点
         super.visitFunctionDecl(functionDecl)
 
+        //3.重新设置scope
         this.scope = oldScope
     }
 
+    /**
+     * 修改当前的Scope
+     * @param block
+     */
     visitBlock(block: Block): any {
+        //1.修改scope
         let oldScope = this.scope
         this.scope = block.scope as Scope
-        console.assert(this.scope != null, 'scope不可为null')
+        assert(this.scope != null, 'Scope不可为null')
 
+        //为已声明的变量设置一个存储区域
         this.declaredVarsMap.set(this.scope, new Map())
 
+        //2.遍历下级节点
         super.visitBlock(block)
 
+        //3.重新设置scope
         this.scope = oldScope
     }
 
     visitForStatement(forStmt: ForStatement): any {
+        //1.修改scope
         let oldScope = this.scope
         this.scope = forStmt.scope as Scope
-        console.assert(this.scope != null, 'scope不可为null')
+        assert(this.scope != null, 'Scope不可为null')
 
+        //为已声明的变量设置一个存储区域
         this.declaredVarsMap.set(this.scope, new Map())
 
+        //2.遍历下级节点
         super.visitForStatement(forStmt)
 
+        //3.重新设置scope
         this.scope = oldScope
     }
 
+    /**
+     * 做函数的消解。
+     * 函数不需要声明在前，使用在后。
+     * @param functionCall
+     */
     visitFunctionCall(functionCall: FunctionCall): any {
         let currentScope = this.scope as Scope
-
+        // console.log("in semantic.visitFunctionCall: " + functionCall.name);
         if (built_ins.has(functionCall.name)) {
+            //系统内置函数
             functionCall.sym = built_ins.get(
                 functionCall.name
             ) as FunctionSymbol
@@ -247,9 +306,16 @@ class RefResolver extends SemanticAstVisitor {
             ) as FunctionSymbol | null
         }
 
+        // console.log(functionCall.sym);
+
+        //调用下级，主要是参数。
         super.visitFunctionCall(functionCall)
     }
 
+    /**
+     * 标记变量是否已被声明
+     * @param variableDecl
+     */
     visitVariableDecl(variableDecl: VariableDecl): any {
         let currentScope = this.scope as Scope
         let declaredSyms = this.declaredVarsMap.get(currentScope) as Map<
@@ -258,17 +324,30 @@ class RefResolver extends SemanticAstVisitor {
         >
         let sym = currentScope.getSymbol(variableDecl.name)
         if (sym != null) {
+            //TODO 需要检查sym是否是变量
             declaredSyms.set(variableDecl.name, sym as VarSymbol)
         }
 
+        //处理初始化的部分
         super.visitVariableDecl(variableDecl)
     }
 
+    /**
+     * 变量引用消解
+     * 变量必须声明在前，使用在后。
+     * @param variable
+     */
     visitVariable(variable: Variable): any {
         let currentScope = this.scope as Scope
         variable.sym = this.findVariableCascade(currentScope, variable)
     }
 
+    /**
+     * 逐级查找某个符号是不是在声明前就使用了。
+     * @param scope
+     * @param name
+     * @param kind
+     */
     private findVariableCascade(
         scope: Scope,
         variable: Variable
@@ -278,10 +357,9 @@ class RefResolver extends SemanticAstVisitor {
             VarSymbol
         >
         let symInScope = scope.getSymbol(variable.name)
-
         if (symInScope != null) {
             if (declaredSyms.has(variable.name)) {
-                return declaredSyms.get(variable.name) as VarSymbol
+                return declaredSyms.get(variable.name) as VarSymbol //找到了，成功返回。
             } else {
                 if (symInScope.kind == SymKind.Variable) {
                     this.addError(
@@ -315,18 +393,24 @@ class RefResolver extends SemanticAstVisitor {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////
 // 属性分析
-// 类型计算和检验
+// 1.类型计算和检查
+//
 
 class LeftValueAttributor extends SemanticAstVisitor {
     parentOperator: Op | null = null
 
+    /**
+     * 检查赋值符号和.符号左边是否是左值
+     * @param binary
+     */
     visitBinary(binary: Binary): any {
         if (Operators.isAssignOp(binary.op) || binary.op == Op.Dot) {
             let lastParentOperator = this.parentOperator
             this.parentOperator = binary.op
 
+            //检查左子节点
             this.visit(binary.exp1)
             if (!binary.exp1.isLeftValue) {
                 this.addError(
@@ -337,8 +421,10 @@ class LeftValueAttributor extends SemanticAstVisitor {
                 )
             }
 
+            //恢复原来的状态信息
             this.parentOperator = lastParentOperator
 
+            //继续遍历右子节点
             this.visit(binary.exp2)
         } else {
             super.visitBinary(binary)
@@ -346,9 +432,9 @@ class LeftValueAttributor extends SemanticAstVisitor {
     }
 
     visitUnary(u: Unary): any {
+        //要求必须是个左值
         if (u.op == Op.Inc || u.op == Op.Dec) {
             let lastParentOperator = this.parentOperator
-
             this.parentOperator = u.op
 
             this.visit(u.exp)
@@ -361,22 +447,30 @@ class LeftValueAttributor extends SemanticAstVisitor {
                 )
             }
 
+            //恢复原来的状态信息
             this.parentOperator = lastParentOperator
         } else {
             super.visitUnary(u)
         }
     }
 
+    /**
+     * 变量都可以作为左值，除非其类型是void
+     * @param v
+     */
     visitVariable(v: Variable): any {
         if (this.parentOperator != null) {
             let t = v.theType as Type
-
             if (!t.hasVoid()) {
                 v.isLeftValue = true
             }
         }
     }
 
+    /**
+     * 但函数调用是在.符号左边，并且返回值不为void的时候，可以作为左值
+     * @param functionCall
+     */
     visitFunctionCall(functionCall: FunctionCall): any {
         if (this.parentOperator == Op.Dot) {
             let functionType = functionCall.theType as FunctionType
@@ -399,18 +493,21 @@ class TypeChecker extends SemanticAstVisitor {
             let t2 = variableDecl.init.theType as Type
             if (!t2.LE(t1)) {
                 this.addError(
-                    'Operator = can not be applied to ' +
+                    "Operator '=' can not be applied to '" +
                         t1.name +
-                        ' and ' +
+                        "' and '" +
                         t2.name +
-                        '.',
+                        "'.",
                     variableDecl
                 )
             }
 
-            // 类型推断： 对于any类型，变成=号右边的具体类型
+            //类型推断：对于any类型，变成=号右边的具体类型
             if (t1 === SysTypes.Any) {
-                variableDecl.theType = t2
+                variableDecl.theType = t2 //TODO：此处要调整
+                // variableDecl.inferredType = t2;
+                //重点是把类型记入符号中，这样相应的变量声明就会获得准确的类型
+                //由于肯定是声明在前，使用在后，所以变量引用的类型是准确的。
                 ;(variableDecl.sym as VarSymbol).theType = t2
             }
         }
@@ -421,10 +518,10 @@ class TypeChecker extends SemanticAstVisitor {
 
         let t1 = bi.exp1.theType as Type
         let t2 = bi.exp2.theType as Type
-
         if (Operators.isAssignOp(bi.op)) {
             bi.theType = t1
             if (!t2.LE(t1)) {
+                //检查类型匹配
                 this.addError(
                     "Operator '" +
                         Op[bi.op] +
@@ -437,9 +534,25 @@ class TypeChecker extends SemanticAstVisitor {
                 )
             }
         } else if (bi.op == Op.Plus) {
+            //有一边是string，或者两边都是number才行。
             if (t1 == SysTypes.String || t2 == SysTypes.String) {
                 bi.theType = SysTypes.String
             } else if (t1.LE(SysTypes.Number) && t2.LE(SysTypes.Number)) {
+                bi.theType = Type.getUpperBound(t1, t2)
+            } else {
+                this.addError(
+                    "Operator '" +
+                        Op[bi.op] +
+                        "' can not be applied to '" +
+                        t1.name +
+                        "' and '" +
+                        t2.name +
+                        "'.",
+                    bi
+                )
+            }
+        } else if (Operators.isArithmeticOp(bi.op)) {
+            if (t1.LE(SysTypes.Number) && t2.LE(SysTypes.Number)) {
                 bi.theType = Type.getUpperBound(t1, t2)
             } else {
                 this.addError(
@@ -492,7 +605,7 @@ class TypeChecker extends SemanticAstVisitor {
         super.visitUnary(u)
 
         let t = u.exp.theType as Type
-        // 要求必须是左值
+        //要求必须是个左值
         if (u.op == Op.Inc || u.op == Op.Dec) {
             if (t.LE(SysTypes.Number)) {
                 u.theType = t
@@ -544,6 +657,10 @@ class TypeChecker extends SemanticAstVisitor {
         }
     }
 
+    /**
+     * 用符号的类型（也就是变量声明的类型），来标注本节点
+     * @param v
+     */
     visitVariable(v: Variable): any {
         if (v.sym != null) {
             v.theType = v.sym.theType
@@ -554,8 +671,10 @@ class TypeChecker extends SemanticAstVisitor {
         if (functionCall.sym != null) {
             let functionType = functionCall.sym.theType as FunctionType
 
+            //注意：不使用函数类型，而是使用返回值的类型
             functionCall.theType = functionType.returnType
 
+            //检查参数数量
             if (
                 functionCall.arguments.length != functionType.paramTypes.length
             ) {
@@ -571,13 +690,12 @@ class TypeChecker extends SemanticAstVisitor {
                 )
             }
 
+            //检查注意检查参数的类型
             for (let i = 0; i < functionCall.arguments.length; i++) {
                 this.visit(functionCall.arguments[i])
-
                 if (i < functionType.paramTypes.length) {
                     let t1 = functionCall.arguments[i].theType as Type
                     let t2 = functionType.paramTypes[i] as Type
-
                     if (!t1.LE(t2) && t2 !== SysTypes.String) {
                         this.addError(
                             'Argument ' +
@@ -599,6 +717,8 @@ class TypeChecker extends SemanticAstVisitor {
 
 /**
  * 类型转换
+ * 添加必要的AST节点，来完成转换
+ * 目前特性：其他类型转换成字符串
  */
 class TypeConverter extends SemanticAstVisitor {
     visitBinary(bi: Binary): any {
@@ -694,7 +814,7 @@ class ConstFolder extends SemanticAstVisitor {
         if (Operators.isAssignOp(bi.op)) {
             if (typeof v2 != 'undefined') {
                 if (bi.op == Op.Assign) {
-                    // 暂时只支持 = 号
+                    //暂时只支持=号
                     bi.exp1.constValue = v1
                     bi.constValue = v1
                 } else {
@@ -706,45 +826,44 @@ class ConstFolder extends SemanticAstVisitor {
             }
         } else if (typeof v1 != 'undefined' && typeof v2 != 'undefined') {
             let v: any
-
             switch (bi.op) {
-                case Op.Plus:
+                case Op.Plus: //'+'
                     v = v1 + v2
                     break
-                case Op.Minus:
+                case Op.Minus: //'-'
                     v = v1 - v2
                     break
-                case Op.Multiply:
+                case Op.Multiply: //'*'
                     v = v1 * v2
                     break
-                case Op.Divide:
+                case Op.Divide: //'/'
                     v = v1 / v2
                     break
-                case Op.Modulus:
+                case Op.Modulus: //'%'
                     v = v1 % v2
                     break
-                case Op.G:
+                case Op.G: //'>'
                     v = v1 > v2
                     break
-                case Op.GE:
+                case Op.GE: //'>='
                     v = v1 >= v2
                     break
-                case Op.L:
+                case Op.L: //'<'
                     v = v1 < v2
                     break
-                case Op.LE:
+                case Op.LE: //'<='
                     v = v1 <= v2
                     break
-                case Op.EQ:
+                case Op.EQ: //'=='
                     v = v1 == v2
                     break
-                case Op.NE:
+                case Op.NE: //'!='
                     v = v1 != v2
                     break
-                case Op.And:
+                case Op.And: //'&&'
                     v = v1 && v2
                     break
-                case Op.Or:
+                case Op.Or: //'||'
                     v = v1 || v2
                     break
                 default:
@@ -793,5 +912,102 @@ class ConstFolder extends SemanticAstVisitor {
                 )
             }
         }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////
+// 数据流分析
+//
+
+/**
+ * 检查函数的所有分枝是否都会返回某个规定的值
+ * 使用方法：针对每个函数调用visitFunctionDecl()
+ */
+class LiveAnalyzer extends SemanticAstVisitor {
+    /**
+     * 返回程序是否是alive的。
+     * 如果每个分枝都有正确的return语句，那么返回false。否则，返回true。
+     * @param functionDecl
+     */
+    visitFunctionDecl(functionDecl: FunctionDecl): any {
+        let sym = functionDecl.sym as FunctionSymbol
+        let functionType = sym.theType as FunctionType
+        if (
+            functionType.returnType != SysTypes.Any &&
+            functionType.returnType != SysTypes.Void
+        ) {
+            return super.visitBlock(functionDecl.body)
+        } else {
+            return false
+        }
+    }
+
+    visitBlock(block: Block): any {
+        let alive: boolean = true
+        for (let stmt of block.stmts) {
+            if (alive) {
+                alive = this.visit(stmt) as boolean
+            }
+            //return语句之后的语句，都是死代码。
+            //作为Warning，而不是错误。
+            else {
+                this.addWarning('Unreachable code detected.', stmt)
+            }
+        }
+        return alive
+    }
+
+    visitReturnStatement(stmt: ReturnStatement): any {
+        return false
+    }
+
+    visitIfStatement(ifStmt: IfStatement): any {
+        //如果没有else语句，则看看if条件有没有常量的值，是否为常真。
+
+        if (ifStmt.elseStmt == null) {
+            if (ifStmt.condition.constValue) {
+                return this.visit(ifStmt.stmt) as boolean
+            } else {
+                return true
+            }
+        } else {
+            let alive1 = this.visit(ifStmt.stmt) as boolean
+            let alive2 = this.visit(ifStmt.elseStmt) as boolean
+            return alive1 || alive2 //只有两个分支都是false，才返回false；
+        }
+    }
+
+    /**
+     * 因为我们现在不支持break，所以检查起来比较简单。只要有return语句，我们就认为alive=false;
+     * @param forStmt
+     */
+    visitForStatement(forStmt: ForStatement): any {
+        //查看是否满足进入条件
+
+        if (
+            forStmt.condition != null &&
+            typeof forStmt.condition.constValue != 'undefined'
+        ) {
+            if (forStmt.condition.constValue) {
+                return this.visit(forStmt.stmt)
+            } else {
+                //如果不可能进入循环体，那么就不用继续遍历了
+                return true
+            }
+        } else {
+            return this.visit(forStmt.stmt)
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////
+// 自动添加return语句，以及其他导致AST改变的操作
+// todo 后面用数据流分析的方法
+
+class Trans extends SemanticAstVisitor {
+    visitProg(prog: Prog): any {
+        //在后面添加return语句
+        //TODO: 需要判断最后一个语句是不是已经是Return语句
+        prog.stmts.push(new ReturnStatement(prog.endPos, prog.endPos, null))
     }
 }

@@ -1,30 +1,44 @@
 /**
  * 符号表和作用域
+ *
  */
 
-import { FunctionDecl } from './ast'
+import { AstNode, FunctionDecl, Prog, VariableDecl } from './ast'
+import { SysTypes, Type, FunctionType } from './types'
 
-import { FunctionType, SysTypes, Type } from './types'
+/////////////////////////////////////////////////////////////////////////
+// 符号表
+//
 
+/**
+ * 符号
+ */
 export abstract class Symbol {
     name: string
     theType: Type = SysTypes.Any
     kind: SymKind
-
     constructor(name: string, theType: Type, kind: SymKind) {
         this.name = name
         this.theType = theType
         this.kind = kind
     }
 
-    abstract accept(visitor: SymbolVisitor, additional: any): any
+    /**
+     * visitor模式
+     * @param vistor
+     * @param additional 额外需要传递给visitor的信息。
+     */
+    abstract accept(vistor: SymbolVisitor, additional: any): any
 }
 
 export class FunctionSymbol extends Symbol {
-    vars: VarSymbol[] = [] // 本地变量的列表，参数也算是本地变量
-    opStackSize: number = 10
-    byteCode: number[] | null = null
-    decl: FunctionDecl | null = null
+    vars: VarSymbol[] = [] //本地变量的列表。参数也算本地变量。
+
+    opStackSize: number = 10 //操作数栈的大小
+
+    byteCode: number[] | null = null //存放生成的字节码
+
+    decl: FunctionDecl | null = null //存放AST，作为代码来运行
 
     constructor(name: string, theType: FunctionType, vars: VarSymbol[] = []) {
         super(name, theType, SymKind.Function)
@@ -32,10 +46,16 @@ export class FunctionSymbol extends Symbol {
         this.vars = vars
     }
 
-    accept(visitor: SymbolVisitor, additional: any) {
-        visitor.visitFunctionSymbol(this, additional)
+    /**
+     * visitor模式
+     * @param vistor
+     * @param additional 额外需要传递给visitor的信息。
+     */
+    accept(vistor: SymbolVisitor, additional: any = undefined): any {
+        vistor.visitFunctionSymbol(this, additional)
     }
 
+    //获取参数数量
     getNumParams(): number {
         return (this.theType as FunctionType).paramTypes.length
     }
@@ -47,11 +67,19 @@ export class VarSymbol extends Symbol {
         this.theType = theType
     }
 
-    accept(visitor: SymbolVisitor, additional: any) {
-        visitor.visitVarSymbol(this, additional)
+    /**
+     * visitor模式
+     * @param vistor
+     * @param additional 额外需要传递给visitor的信息。
+     */
+    accept(vistor: SymbolVisitor, additional: any = undefined): any {
+        vistor.visitVarSymbol(this, additional)
     }
 }
 
+/**
+ * 符号类型
+ */
 export enum SymKind {
     Variable,
     Function,
@@ -61,18 +89,35 @@ export enum SymKind {
     Prog,
 }
 
+/**
+ * 左值。
+ * 目前先只是指变量。
+ */
+// export class LeftValue{
+//     leftValue_tag = 1234;  //魔法数字，用来做类型判断
+//     variable:VarSymbol;
+//     constructor(variable:VarSymbol){
+//         this.variable = variable;
+//     }
+
+//     static isLeftValue(v:any):boolean{
+//         return (typeof v == 'object' && typeof (v as LeftValue).variable == 'object' &&
+//             typeof (v as LeftValue).leftValue_tag == 'number' && (v as LeftValue).leftValue_tag == 1234);
+//     }
+// }
+
+/////////////////////////////////////////////////////////////////////////
+//一些系统内置的符号
 export let FUN_println = new FunctionSymbol(
     'println',
     new FunctionType(SysTypes.Void, [SysTypes.String]),
     [new VarSymbol('a', SysTypes.String)]
 )
-
 export let FUN_tick = new FunctionSymbol(
     'tick',
     new FunctionType(SysTypes.Integer, []),
     []
 )
-
 export let FUN_integer_to_string = new FunctionSymbol(
     'integer_to_string',
     new FunctionType(SysTypes.String, [SysTypes.Integer]),
@@ -83,6 +128,7 @@ export let built_ins: Map<string, FunctionSymbol> = new Map([
     ['println', FUN_println],
     ['tick', FUN_tick],
     ['integer_to_string', FUN_integer_to_string],
+    // ["string_concat", FUN_string_concat],
 ])
 
 let FUN_string_create_by_str = new FunctionSymbol(
@@ -90,7 +136,6 @@ let FUN_string_create_by_str = new FunctionSymbol(
     new FunctionType(SysTypes.String, [SysTypes.String]),
     [new VarSymbol('a', SysTypes.String)]
 )
-
 let FUN_string_concat = new FunctionSymbol(
     'string_concat',
     new FunctionType(SysTypes.String, [SysTypes.String, SysTypes.String]),
@@ -105,36 +150,49 @@ export let intrinsics: Map<string, FunctionSymbol> = new Map([
     ['string_concat', FUN_string_concat],
 ])
 
+///////////////////////////////////////////////////////////////////////
+//visitor
 export abstract class SymbolVisitor {
     abstract visitVarSymbol(sym: VarSymbol, additional: any): any
     abstract visitFunctionSymbol(sym: FunctionSymbol, additional: any): any
 }
 
 export class SymbolDumper extends SymbolVisitor {
-    visit(sym: Symbol, additional: any): any {
+    visit(sym: Symbol, additional: any) {
         return sym.accept(this, additional)
     }
 
+    /*
+     * 输出VarSymbol的调试信息
+     * @param sym
+     * @param additional 前缀字符串
+     */
     visitVarSymbol(sym: VarSymbol, additional: any): any {
-        console.log(`${additional}${sym.name}{${SymKind[sym.kind]}}`)
+        console.log(additional + sym.name + '{' + SymKind[sym.kind] + '}')
     }
 
+    /**
+     * 输出FunctionSymbol的调试信息
+     * @param sym
+     * @param additional 前缀字符串
+     */
     visitFunctionSymbol(sym: FunctionSymbol, additional: any): any {
         console.log(
             additional +
                 sym.name +
                 '{' +
                 SymKind[sym.kind] +
-                ', local var count: ' +
+                ', local var count:' +
                 sym.vars.length +
                 '}'
         )
+        //输出字节码
         if (sym.byteCode != null) {
             let str: string = ''
             for (let code of sym.byteCode) {
                 str += code.toString(16) + ' '
             }
-            console.log(additional + '\tbytecode: ' + str)
+            console.log(additional + '    bytecode: ' + str)
         }
     }
 }
