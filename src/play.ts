@@ -101,13 +101,13 @@ function compileAndRun(fileName: string, program: string) {
     bcModuleDumper.dump(bcModule)
     // console.log(bcModule);
 
-    console.log('\n使用栈机运行程序:')
-    date1 = new Date()
-    retVal = new VM().execute(bcModule)
-    date2 = new Date()
-    console.log('程序返回值：')
-    // console.log(retVal);
-    console.log('耗时：' + (date2.getTime() - date1.getTime()) / 1000 + '秒')
+    // console.log('\n使用栈机运行程序:')
+    // date1 = new Date()
+    // retVal = new VM().execute(bcModule)
+    // date2 = new Date()
+    // console.log('程序返回值：')
+    // // console.log(retVal);
+    // console.log('耗时：' + (date2.getTime() - date1.getTime()) / 1000 + '秒')
 
     console.log('\n生成字节码文件：')
     let writer = new BCModuleWriter()
